@@ -44,10 +44,16 @@ def test_entries_reject_path_escape(client: TestClient) -> None:
     assert response.status_code == 400
 
 
-def test_catalog_allows_a_browser_origin(client: TestClient) -> None:
+def test_catalog_allows_a_configured_origin(client: TestClient) -> None:
     response = client.get("/catalog/entries", headers={"Origin": "http://localhost:1420"})
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:1420"
+
+
+def test_catalog_omits_cors_for_an_unknown_origin(client: TestClient) -> None:
+    response = client.get("/catalog/entries", headers={"Origin": "https://evil.example"})
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
 
 
 def test_audio_returns_disk_bytes(client: TestClient, tmp_path: Path) -> None:

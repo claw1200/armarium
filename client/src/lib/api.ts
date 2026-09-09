@@ -1,3 +1,5 @@
+import { env } from '$env/dynamic/public';
+
 export type CatalogFolder = {
 	name: string;
 	path: string;
@@ -21,12 +23,10 @@ export type CatalogListing = {
 
 export const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
 
-type ApiEnv = { PUBLIC_ARMARIUM_API?: string };
-
-export function apiBase(env: ApiEnv = import.meta.env as ApiEnv): string {
-	const configured = env.PUBLIC_ARMARIUM_API?.trim();
-	if (configured) {
-		return configured.replace(/\/$/, '');
+export function apiBase(configured: string | undefined = env.PUBLIC_ARMARIUM_API): string {
+	const trimmed = configured?.trim();
+	if (trimmed) {
+		return trimmed.replace(/\/$/, '');
 	}
 	return DEFAULT_API_BASE;
 }

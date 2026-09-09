@@ -30,7 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(title="Armarium", lifespan=lifespan)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=resolved.cors_origins,
         allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
         allow_headers=["*"],
     )

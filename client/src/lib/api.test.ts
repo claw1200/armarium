@@ -1,7 +1,16 @@
 import { expect, test } from 'vitest';
-import { audioUrl, catalogEntriesUrl, fetchListing } from './api';
+import { apiBase, audioUrl, catalogEntriesUrl, DEFAULT_API_BASE, fetchListing } from './api';
 
 const BASE = 'http://127.0.0.1:8000';
+
+test('apiBase uses a configured origin', () => {
+	expect(apiBase('http://nas:8000/')).toBe('http://nas:8000');
+});
+
+test('apiBase falls back to the local server', () => {
+	expect(apiBase(undefined)).toBe(DEFAULT_API_BASE);
+	expect(apiBase('  ')).toBe(DEFAULT_API_BASE);
+});
 
 test('catalog url omits path at the library root', () => {
 	expect(catalogEntriesUrl('', BASE)).toBe('http://127.0.0.1:8000/catalog/entries');
