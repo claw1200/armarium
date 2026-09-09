@@ -1,4 +1,4 @@
-export const desktopOnlyMessage = 'Open Armarium as the desktop app to drag files.';
+export const desktopOnlyMessage = 'Open Armarium as the desktop app to cache files.';
 
 export function toErrorMessage(caught: unknown): string {
 	if (caught instanceof Error) {
