@@ -1,21 +1,12 @@
-from dataclasses import dataclass
-
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.api.context import app_context
 from app.catalog.models import FileRecord, FolderEntry
 from app.catalog.paths import parse_folder_path
-from app.catalog.store import CatalogStore
-from app.config import Settings
 from app.indexer.scan import scan_library
 
 router = APIRouter()
-
-
-@dataclass(frozen=True, slots=True)
-class AppContext:
-    settings: Settings
-    store: CatalogStore
 
 
 class ScanResponse(BaseModel):
@@ -43,13 +34,9 @@ class ListingResponse(BaseModel):
     files: list[FileResponse]
 
 
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
-
-
 @router.post("/catalog/scan", response_model=ScanResponse)
 def rescan(request: Request) -> ScanResponse:
-    ctx = _context(request)
+    ctx = app_context(request)
     if not ctx.settings.library_root.is_dir():
         raise HTTPException(status_code=400, detail="library root is not a directory")
     file_count = scan_library(ctx.settings.library_root, ctx.store)
@@ -62,7 +49,7 @@ def list_entries(request: Request, path: str | None = Query(default=None)) -> Li
         folder = parse_folder_path(path)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    listing = _context(request).store.list_folder(folder)
+    listing = app_context(request).store.list_folder(folder)
     return ListingResponse(
         path=listing.path,
         folders=[_folder_response(entry) for entry in listing.folders],
