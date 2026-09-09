@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "Armarium",
-        "width": 960,
-        "height": 720
+        "width": 720,
+        "height": 960,
+        "minWidth": 400,
+        "minHeight": 600
       }
     ],
     "security": {

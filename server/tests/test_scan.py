@@ -112,3 +112,45 @@ def test_list_folder_does_not_include_unrelated_trees(tmp_path: Path) -> None:
     assert [folder.name for folder in store.list_folder("A_").folders] == ["Other"]
     assert [folder.name for folder in store.list_folder("AX").folders] == ["Leak"]
     store.close()
+
+
+def test_list_files_pages_and_filters_by_prefix(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Drums" / "Kicks" / "kick.wav")
+    write_sine_wav(library / "Drums" / "Snares" / "snare.wav", frequency=180)
+    write_sine_wav(library / "Loops" / "Foley" / "fx.wav")
+    write_sine_wav(library / "A_" / "Other" / "wild.wav")
+    write_sine_wav(library / "AX" / "Leak" / "bad.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+
+    page = store.list_files(offset=0, limit=2, sort="path")
+    assert page.total == 5
+    assert [item.relative_path for item in page.items] == [
+        "AX/Leak/bad.wav",
+        "A_/Other/wild.wav",
+    ]
+
+    drums = store.list_files(offset=0, limit=50, prefix="Drums")
+    assert [item.relative_path for item in drums.items] == [
+        "Drums/Kicks/kick.wav",
+        "Drums/Snares/snare.wav",
+    ]
+
+    escaped = store.list_files(offset=0, limit=50, prefix="A_")
+    assert [item.relative_path for item in escaped.items] == ["A_/Other/wild.wav"]
+    store.close()
+
+
+def test_list_files_sorts_by_duration_then_path(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "b.wav", seconds=0.2)
+    write_sine_wav(library / "a.wav", seconds=0.2)
+    write_sine_wav(library / "long.wav", seconds=0.4)
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+    page = store.list_files(offset=0, limit=50, sort="duration")
+    assert [item.name for item in page.items] == ["a.wav", "b.wav", "long.wav"]
+    store.close()

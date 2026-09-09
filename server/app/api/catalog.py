@@ -4,7 +4,11 @@ from pydantic import BaseModel
 from app.api.context import app_context
 from app.catalog.models import FileRecord, FolderEntry
 from app.catalog.paths import parse_folder_path
+from app.catalog.store import FILE_SORTS
 from app.indexer.scan import scan_library
+
+MAX_PAGE_SIZE = 200
+DEFAULT_PAGE_SIZE = 50
 
 router = APIRouter()
 
@@ -21,6 +25,7 @@ class FolderResponse(BaseModel):
 class FileResponse(BaseModel):
     name: str
     path: str
+    parent_path: str
     size_bytes: int
     format: str
     duration_seconds: float | None
@@ -32,6 +37,13 @@ class ListingResponse(BaseModel):
     path: str
     folders: list[FolderResponse]
     files: list[FileResponse]
+
+
+class FilesResponse(BaseModel):
+    items: list[FileResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 @router.post("/catalog/scan", response_model=ScanResponse)
@@ -57,6 +69,35 @@ def list_entries(request: Request, path: str | None = Query(default=None)) -> Li
     )
 
 
+@router.get("/catalog/files", response_model=FilesResponse)
+def list_files(
+    request: Request,
+    limit: int = Query(default=DEFAULT_PAGE_SIZE),
+    offset: int = Query(default=0),
+    prefix: str | None = Query(default=None),
+    sort: str = Query(default="path"),
+) -> FilesResponse:
+    if not 1 <= limit <= MAX_PAGE_SIZE:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+    if sort not in FILE_SORTS:
+        raise HTTPException(status_code=400, detail="invalid sort")
+    try:
+        folder = parse_folder_path(prefix)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    page = app_context(request).store.list_files(
+        offset=offset, limit=limit, prefix=folder, sort=sort
+    )
+    return FilesResponse(
+        items=[_file_response(record) for record in page.items],
+        total=page.total,
+        limit=page.limit,
+        offset=page.offset,
+    )
+
+
 def _folder_response(entry: FolderEntry) -> FolderResponse:
     return FolderResponse(name=entry.name, path=entry.path)
 
@@ -65,6 +106,7 @@ def _file_response(record: FileRecord) -> FileResponse:
     return FileResponse(
         name=record.name,
         path=record.relative_path,
+        parent_path=record.parent_path,
         size_bytes=record.size_bytes,
         format=record.format,
         duration_seconds=record.duration_seconds,

@@ -167,6 +167,14 @@ pub fn download(
     Ok(dest)
 }
 
+pub fn cached_relatives(cache_root: &Path, relatives: &[String]) -> Vec<String> {
+    relatives
+        .iter()
+        .filter(|relative| complete_file(cache_root, relative).is_ok())
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +218,24 @@ mod tests {
             Err(CacheError::InvalidPath)
         );
         assert_eq!(relative_cache_path(""), Err(CacheError::InvalidPath));
+    }
+
+    #[test]
+    fn cached_relatives_returns_only_complete_hits() {
+        let dir = tempfile::tempdir().unwrap();
+        let kick = cached_file_path(dir.path(), "Drums/Kicks/kick.wav").unwrap();
+        write_complete_file(&kick, b"RIFF").unwrap();
+        assert_eq!(
+            cached_relatives(
+                dir.path(),
+                &[
+                    "Drums/Kicks/kick.wav".into(),
+                    "Drums/Snares/snare.wav".into(),
+                    "../escape.wav".into(),
+                ]
+            ),
+            ["Drums/Kicks/kick.wav"]
+        );
     }
 
     #[test]
