@@ -31,7 +31,7 @@ One repo, two apps. Client and server ship on different cadences but share an AP
 | Piece | Choice | Role |
 |---|---|---|
 | Server | Python 3, FastAPI, Docker Compose | Index library, serve catalog + audio |
-| Catalog | SQLite | Paths, size, mtime, cheap audio metadata |
+| Catalog | SQLite via SQLAlchemy | Paths, size, mtime, cheap audio metadata |
 | Client | Tauri 2 + Svelte 5 | Browse, preview, download, native file drag |
 | Library mount | Read-only volume | NAS files, not copied into the DB |
 
@@ -47,7 +47,7 @@ armarium/
 
 The SvelteKit UI is the desktop frontend and, later, the optional website. Native work stays in `src-tauri`. No shared package until the API contract needs one (OpenAPI from FastAPI is enough).
 
-Indexer: periodic scan first; live watch later. Waveforms and heavy analysis are on-demand, not a full-library import.
+Indexer: periodic scan first; live watch later. Waveforms and heavy analysis are on-demand, not a full-library import. The catalog API is `POST /catalog/scan` and `GET /catalog/entries?path=`. Folders are derived from indexed file paths; audio bytes stay on disk.
 
 ## Quality
 
