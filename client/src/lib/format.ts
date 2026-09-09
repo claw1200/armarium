@@ -2,10 +2,8 @@ export function formatDuration(seconds: number | null): string {
 	if (seconds === null || !Number.isFinite(seconds)) {
 		return '—';
 	}
-	if (seconds < 60) {
-		return `${seconds.toFixed(2)}s`;
-	}
-	const total = Math.round(seconds);
+	const rounded = Math.round(seconds);
+	const total = seconds > 0 ? Math.max(1, rounded) : 0;
 	const minutes = Math.floor(total / 60);
 	const remainder = total % 60;
 	return `${minutes}:${String(remainder).padStart(2, '0')}`;

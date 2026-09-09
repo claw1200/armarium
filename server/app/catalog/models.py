@@ -35,3 +35,11 @@ class CatalogListing:
     path: str
     folders: list[FolderEntry]
     files: list[FileRecord]
+
+
+@dataclass(frozen=True, slots=True)
+class FilePage:
+    items: list[FileRecord]
+    total: int
+    limit: int
+    offset: int
