@@ -41,8 +41,8 @@
 	let offset = $derived(catalog?.offset ?? 0);
 	let selected = $derived(items.find((file) => file.path === selectedPath) ?? null);
 	let loading = $derived(navigating.to !== null);
-	let pageNumber = $derived(Math.floor(offset / limit) + 1);
 	let pageCount = $derived(Math.max(1, Math.ceil(total / limit)));
+	let pageNumber = $derived(Math.min(pageCount, Math.floor(offset / limit) + 1));
 	let previousOffset = $derived(Math.max(0, offset - limit));
 	let nextOffset = $derived(offset + limit);
 	let playing = $derived(!paused);
@@ -136,7 +136,6 @@
 	}
 
 	async function downloadFile(file: CatalogFile): Promise<void> {
-		selectFile(file);
 		if (downloadingPath !== null) {
 			return;
 		}
@@ -273,7 +272,7 @@
 					onstopGesture={stopRowGesture}
 				/>
 			</div>
-			{#if total > limit}
+			{#if total > limit || offset > 0}
 				<SamplePager
 					{pageNumber}
 					{pageCount}

@@ -36,7 +36,7 @@
 	let liked = $state('');
 	let title = $derived(fileStem(file.name));
 	let playLabel = $derived(playing ? 'Pause' : 'Play');
-	let likeName = $derived(`like-${file.path.replace(/[^a-zA-Z0-9]+/g, '-')}`);
+	let likeName = $derived(`like-${file.path}`);
 
 	function stopAndToggle(event: MouseEvent): void {
 		event.stopPropagation();
