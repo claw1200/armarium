@@ -20,7 +20,12 @@ def iter_audio_files(library_root: Path) -> list[Path]:
 
 
 def scan_library(library_root: Path, store: CatalogStore) -> int:
-    records = [_record_for(library_root, path) for path in iter_audio_files(library_root)]
+    records: list[FileRecord] = []
+    for path in iter_audio_files(library_root):
+        try:
+            records.append(_record_for(library_root, path))
+        except (OSError, ValueError):
+            continue
     return store.replace_all(records)
 
 
