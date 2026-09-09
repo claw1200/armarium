@@ -6,6 +6,7 @@ from threading import Lock
 
 from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.catalog.listing import child_folder_names
 from app.catalog.models import Base, CatalogListing, FileRecord, FolderEntry
@@ -48,9 +49,7 @@ class CatalogStore:
             ]
             parent_paths = list(
                 session.scalars(
-                    select(FileRecord.parent_path)
-                    .where(FileRecord.parent_path != "")
-                    .distinct()
+                    select(FileRecord.parent_path).where(_parents_under(folder)).distinct()
                 )
             )
         folder_names = child_folder_names(parent_paths, folder)
@@ -63,6 +62,12 @@ class CatalogStore:
     def close(self) -> None:
         with self._lock:
             self._engine.dispose()
+
+
+def _parents_under(folder: str) -> ColumnElement[bool]:
+    if not folder:
+        return FileRecord.parent_path != ""
+    return FileRecord.parent_path.startswith(f"{folder}/", autoescape=True)
 
 
 def _configure_sqlite(dbapi_connection: Connection, _connection_record: object) -> None:

@@ -97,3 +97,18 @@ def test_store_serializes_concurrent_reads_and_writes(tmp_path: Path) -> None:
         for job in jobs:
             job.result()
     store.close()
+
+
+def test_list_folder_does_not_include_unrelated_trees(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Drums" / "Kicks" / "kick.wav")
+    write_sine_wav(library / "Loops" / "Foley" / "fx.wav")
+    write_sine_wav(library / "A_" / "Other" / "wild.wav")
+    write_sine_wav(library / "AX" / "Leak" / "bad.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+    assert [folder.name for folder in store.list_folder("Drums").folders] == ["Kicks"]
+    assert [folder.name for folder in store.list_folder("A_").folders] == ["Other"]
+    assert [folder.name for folder in store.list_folder("AX").folders] == ["Leak"]
+    store.close()
