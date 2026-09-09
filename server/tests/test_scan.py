@@ -2,13 +2,11 @@ from pathlib import Path
 
 from app.catalog.store import CatalogStore
 from app.indexer.scan import scan_library
-from tests.wav_files import write_sine_wav
+from tests.wav_files import write_drum_library, write_sine_wav
 
 
 def test_scan_indexes_nested_audio_and_skips_other_files(tmp_path: Path) -> None:
-    library = tmp_path / "library"
-    write_sine_wav(library / "Drums" / "Kicks" / "kick.wav")
-    write_sine_wav(library / "Drums" / "Snares" / "snare.wav")
+    library = write_drum_library(tmp_path / "library")
     (library / "readme.txt").write_text("ignore", encoding="utf-8")
     (library / ".hidden.wav").write_text("ignore", encoding="utf-8")
 

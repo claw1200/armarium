@@ -3,6 +3,8 @@ import struct
 import wave
 from pathlib import Path
 
+LIBRARY_DIR = "library"
+
 
 def write_sine_wav(
     path: Path,
@@ -26,3 +28,15 @@ def write_sine_wav(
             )
             frames += struct.pack("<h", sample) * channels
         wav_file.writeframes(frames)
+
+
+def write_drum_library(root: Path) -> Path:
+    write_sine_wav(root / "Drums" / "Kicks" / "kick.wav")
+    write_sine_wav(root / "Drums" / "Snares" / "snare.wav", frequency=180)
+    return root
+
+
+def write_example_library(root: Path) -> Path:
+    write_drum_library(root)
+    write_sine_wav(root / "root.wav", frequency=440)
+    return root

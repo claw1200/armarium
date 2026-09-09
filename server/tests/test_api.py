@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from tests.wav_files import write_sine_wav
+from tests.wav_files import LIBRARY_DIR, write_sine_wav
 
 
 def test_startup_scan_lists_nested_library(client: TestClient) -> None:
@@ -25,8 +25,8 @@ def test_startup_scan_lists_nested_library(client: TestClient) -> None:
     assert kicks["files"][0]["duration_seconds"] is not None
 
 
-def test_rescan_endpoint_indexes_a_new_file(client: TestClient, library_root: Path) -> None:
-    write_sine_wav(library_root / "Drums" / "Hats" / "hat.wav")
+def test_rescan_endpoint_indexes_a_new_file(client: TestClient, tmp_path: Path) -> None:
+    write_sine_wav(tmp_path / LIBRARY_DIR / "Drums" / "Hats" / "hat.wav")
     response = client.post("/catalog/scan")
     assert response.status_code == 200
     assert response.json()["file_count"] == 4

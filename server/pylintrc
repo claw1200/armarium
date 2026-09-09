@@ -6,9 +6,7 @@ disable=
     missing-module-docstring,
     missing-class-docstring,
     missing-function-docstring,
-    too-few-public-methods,
-    duplicate-code,
-    redefined-outer-name
+    too-few-public-methods
 
 [FORMAT]
 max-line-length=100
