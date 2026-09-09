@@ -1,9 +1,13 @@
 import { expect, test } from 'vitest';
-import { cacheSample, startCachedDrag } from './cache';
+import { cacheSample, listCached, startCachedDrag } from './cache';
 import { desktopOnlyMessage } from './error';
 
 test('cacheSample refuses the browser', async () => {
 	await expect(cacheSample('Drums/Kicks/kick.wav')).rejects.toThrow(desktopOnlyMessage);
+});
+
+test('listCached is empty outside Tauri', async () => {
+	await expect(listCached(['Drums/Kicks/kick.wav'])).resolves.toEqual([]);
 });
 
 test('startCachedDrag refuses the browser', async () => {

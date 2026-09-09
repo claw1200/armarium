@@ -9,6 +9,18 @@ export function formatDuration(seconds: number | null): string {
 	return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 
+export function formatAudioFormat(format: string): string {
+	return format.toUpperCase();
+}
+
+export function fileStem(name: string): string {
+	const lastDot = name.lastIndexOf('.');
+	if (lastDot <= 0) {
+		return name;
+	}
+	return name.slice(0, lastDot);
+}
+
 export function formatSize(bytes: number): string {
 	if (bytes < 1024) {
 		return `${bytes} B`;

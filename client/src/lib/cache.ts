@@ -13,6 +13,13 @@ export async function cacheSample(relativePath: string): Promise<string> {
 	return invoke<string>('cache_sample', { relativePath, apiBase: apiBase() });
 }
 
+export async function listCached(relativePaths: string[]): Promise<string[]> {
+	if (!isTauri() || relativePaths.length === 0) {
+		return [];
+	}
+	return invoke<string[]>('cached_paths', { relativePaths });
+}
+
 export async function startCachedDrag(relativePath: string): Promise<CachedDrag> {
 	if (!isTauri()) {
 		throw new Error(desktopOnlyMessage);

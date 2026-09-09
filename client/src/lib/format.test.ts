@@ -1,11 +1,22 @@
 import { expect, test } from 'vitest';
-import { formatDuration, formatSize } from './format';
+import { fileStem, formatAudioFormat, formatDuration, formatSize } from './format';
 
 test('formatDuration uses minutes and seconds', () => {
 	expect(formatDuration(0.1)).toBe('0:01');
 	expect(formatDuration(1.4)).toBe('0:01');
 	expect(formatDuration(90)).toBe('1:30');
 	expect(formatDuration(null)).toBe('—');
+});
+
+test('formatAudioFormat uppercases the extension', () => {
+	expect(formatAudioFormat('wav')).toBe('WAV');
+});
+
+test('fileStem drops the last extension', () => {
+	expect(fileStem('kick.wav')).toBe('kick');
+	expect(fileStem('loop.aif')).toBe('loop');
+	expect(fileStem('no-ext')).toBe('no-ext');
+	expect(fileStem('.hidden')).toBe('.hidden');
 });
 
 test('formatSize picks a readable unit', () => {

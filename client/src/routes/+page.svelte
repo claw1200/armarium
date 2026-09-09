@@ -7,19 +7,32 @@
 	import { resolve } from '$app/paths';
 	import { navigating } from '$app/state';
 	import { audioUrl, DEFAULT_PAGE_SIZE, type CatalogFile } from '$lib/api';
-	import { cacheSample, startCachedDrag } from '$lib/cache';
+	import { cacheSample, listCached, startCachedDrag } from '$lib/cache';
+	import FilterBar from '$lib/components/FilterBar.svelte';
+	import LibraryShell from '$lib/components/LibraryShell.svelte';
+	import SampleList from '$lib/components/SampleList.svelte';
+	import SamplePager from '$lib/components/SamplePager.svelte';
+	import SamplePlayer from '$lib/components/SamplePlayer.svelte';
 	import { toErrorMessage } from '$lib/error';
-	import { formatDuration } from '$lib/format';
+	import { SvelteSet } from 'svelte/reactivity';
 	import type { PageProps } from './$types';
+
+	const dragThresholdPx = 6;
 
 	let { data }: PageProps = $props();
 	let selectedPath = $state<string | null>(null);
-	let cachePath = $state<string | null>(null);
+	let cached = new SvelteSet<string>();
 	let cacheError = $state<string | null>(null);
-	let downloading = $state(false);
-	let playing = $state(false);
+	let downloadingPath = $state<string | null>(null);
+	let paused = $state(true);
+	let currentTime = $state(0);
+	let duration = $state(Number.NaN);
+	let volume = $state(1);
+	let looped = $state(false);
+	let search = $state('');
 	let downloadGen = 0;
-	let audioEl = $state<HTMLAudioElement | null>(null);
+	let cachedListGen = 0;
+	let pendingDrag: { path: string; x: number; y: number } | null = null;
 
 	let catalog = $derived(data.catalog);
 	let items = $derived(catalog?.items ?? []);
@@ -32,8 +45,30 @@
 	let pageCount = $derived(Math.max(1, Math.ceil(total / limit)));
 	let previousOffset = $derived(Math.max(0, offset - limit));
 	let nextOffset = $derived(offset + limit);
+	let playing = $derived(!paused);
+	let playingPath = $derived(playing ? selectedPath : null);
+	let resultLabel = $derived(
+		catalog ? `${total.toLocaleString()} ${total === 1 ? 'result' : 'results'}` : ''
+	);
 
 	afterNavigate(() => {
+		const gen = ++cachedListGen;
+		const paths = items.map((file) => file.path);
+		void listCached(paths)
+			.then((hits) => {
+				if (gen !== cachedListGen) {
+					return;
+				}
+				cached.clear();
+				for (const hit of hits) {
+					cached.add(hit);
+				}
+			})
+			.catch(() => {
+				if (gen === cachedListGen) {
+					cached.clear();
+				}
+			});
 		if (pendingSelect === null) {
 			return;
 		}
@@ -59,54 +94,59 @@
 		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
 	}
 
+	function markCached(path: string): void {
+		cached.add(path);
+	}
+
+	function dropCached(path: string): void {
+		cached.delete(path);
+	}
+
 	function selectFile(file: CatalogFile): void {
 		if (file.path === selectedPath) {
 			return;
 		}
 		selectedPath = file.path;
-		cachePath = null;
-		cacheError = null;
-		downloading = false;
-		downloadGen += 1;
+		currentTime = 0;
 	}
 
 	function previewFile(file: CatalogFile): void {
 		if (file.path === selectedPath) {
-			void audioEl?.play();
+			paused = false;
 			return;
 		}
 		selectFile(file);
 		queueMicrotask(() => {
-			document
-				.querySelector(`[data-path="${CSS.escape(file.path)}"]`)
-				?.scrollIntoView({ block: 'nearest' });
+			const row = document.querySelector<HTMLElement>(`[data-path="${CSS.escape(file.path)}"]`);
+			row?.scrollIntoView({ block: 'nearest' });
+			row?.focus({ preventScroll: true });
 		});
 	}
 
 	function togglePlay(file: CatalogFile): void {
-		if (playing && file.path === selectedPath) {
-			audioEl?.pause();
+		if (!paused && file.path === selectedPath) {
+			paused = true;
 			return;
 		}
 		previewFile(file);
 	}
 
+	function stopRowGesture(event: Event): void {
+		event.stopPropagation();
+	}
+
 	async function downloadFile(file: CatalogFile): Promise<void> {
 		selectFile(file);
-		if (downloading) {
+		if (downloadingPath !== null) {
 			return;
 		}
 		const path = file.path;
 		const gen = ++downloadGen;
-		downloading = true;
-		cachePath = null;
+		downloadingPath = path;
 		cacheError = null;
 		try {
-			const localPath = await cacheSample(path);
-			if (gen !== downloadGen) {
-				return;
-			}
-			cachePath = localPath;
+			await cacheSample(path);
+			markCached(path);
 		} catch (error) {
 			if (gen !== downloadGen) {
 				return;
@@ -114,50 +154,55 @@
 			cacheError = toErrorMessage(error);
 		} finally {
 			if (gen === downloadGen) {
-				downloading = false;
+				downloadingPath = null;
 			}
 		}
 	}
 
-	async function dragFile(event: PointerEvent, file: CatalogFile): Promise<void> {
-		event.stopPropagation();
-		if (event.button !== 0) {
+	function onRowPointerDown(event: PointerEvent, file: CatalogFile): void {
+		if (event.button !== 0 || !cached.has(file.path)) {
 			return;
 		}
-		selectFile(file);
-		if (downloading) {
+		pendingDrag = { path: file.path, x: event.clientX, y: event.clientY };
+	}
+
+	function onWindowPointerMove(event: PointerEvent): void {
+		if (pendingDrag === null) {
 			return;
 		}
-		const path = file.path;
+		const dx = event.clientX - pendingDrag.x;
+		const dy = event.clientY - pendingDrag.y;
+		if (dx * dx + dy * dy < dragThresholdPx * dragThresholdPx) {
+			return;
+		}
+		const path = pendingDrag.path;
+		pendingDrag = null;
+		void beginCachedDrag(path);
+	}
+
+	function clearPendingDrag(): void {
+		pendingDrag = null;
+	}
+
+	async function beginCachedDrag(path: string): Promise<void> {
 		try {
 			const result = await startCachedDrag(path);
-			if (path !== selectedPath) {
-				return;
-			}
 			if (result.status === 'needsDownload') {
-				await downloadFile(file);
+				dropCached(path);
 				return;
 			}
-			cachePath = result.path;
 			cacheError = null;
 		} catch (error) {
-			if (path !== selectedPath) {
-				return;
-			}
 			cacheError = toErrorMessage(error);
 		}
 	}
 
-	function onWindowKeydown(event: KeyboardEvent): void {
-		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+	function skipSample(delta: -1 | 1): void {
+		if (items.length === 0) {
 			return;
 		}
-		if (isTypingTarget(event.target) || items.length === 0) {
-			return;
-		}
-		event.preventDefault();
 		const index = items.findIndex((file) => file.path === selectedPath);
-		if (event.key === 'ArrowDown') {
+		if (delta > 0) {
 			const nextFile = index < 0 ? items[0] : items[index + 1];
 			if (nextFile) {
 				previewFile(nextFile);
@@ -179,62 +224,32 @@
 			void goto(resolve(filesHref(previousOffset)), { keepFocus: true, noScroll: true });
 		}
 	}
+
+	function onWindowKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+			return;
+		}
+		if (isTypingTarget(event.target) || items.length === 0) {
+			return;
+		}
+		event.preventDefault();
+		skipSample(event.key === 'ArrowDown' ? 1 : -1);
+	}
 </script>
-
-{#snippet playIcon()}
-	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-4" aria-hidden="true">
-		<path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86Z" />
-	</svg>
-{/snippet}
-
-{#snippet pauseIcon()}
-	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-4" aria-hidden="true">
-		<path d="M6 5h4v14H6zm8 0h4v14h-4z" />
-	</svg>
-{/snippet}
-
-{#snippet downloadIcon()}
-	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-4" aria-hidden="true">
-		<path
-			d="M12 3a1 1 0 0 1 1 1v9.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42L11 13.59V4a1 1 0 0 1 1-1m-7 15a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1a1 1 0 0 1 1-1"
-		/>
-	</svg>
-{/snippet}
-
-{#snippet dragIcon()}
-	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-4" aria-hidden="true">
-		<path
-			d="M9 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0m9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0M9 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0m9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0M9 19a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0m9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0"
-		/>
-	</svg>
-{/snippet}
 
 <svelte:head>
 	<title>Armarium</title>
 </svelte:head>
 
-<svelte:window onkeydown={onWindowKeydown} />
+<svelte:window
+	onkeydown={onWindowKeydown}
+	onpointermove={onWindowPointerMove}
+	onpointerup={clearPendingDrag}
+	onpointercancel={clearPendingDrag}
+/>
 
-<div class="flex min-h-screen flex-col">
-	<div class="navbar bg-base-200">
-		<div class="navbar-start">
-			<span class="px-2 text-lg font-semibold">Armarium</span>
-		</div>
-		<div class="navbar-center">
-			<span class="flex items-center gap-2 text-sm">
-				<kbd class="kbd kbd-sm">↑</kbd>
-				<kbd class="kbd kbd-sm">↓</kbd>
-				<span>preview</span>
-			</span>
-		</div>
-		<div class="navbar-end px-4">
-			{#if loading}
-				<span class="loading loading-spinner" aria-label="Loading"></span>
-			{/if}
-		</div>
-	</div>
-
-	<main class="flex flex-1 flex-col gap-4 p-4">
+<LibraryShell bind:search {loading}>
+	<main class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
 		{#if data.loadError}
 			<div role="alert" class="alert alert-error">{data.loadError}</div>
 		{/if}
@@ -243,132 +258,59 @@
 		{/if}
 
 		{#if catalog}
-			{#if items.length === 0}
-				<p>No samples in the library.</p>
-			{:else}
-				<div class="overflow-x-auto">
-					<table class="table table-pin-rows">
-						<thead>
-							<tr>
-								<th></th>
-								<th>Filename</th>
-								<th>Time</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each items as file (file.path)}
-								<tr
-									data-path={file.path}
-									class={['cursor-pointer hover:bg-base-200', selectedPath === file.path && 'bg-base-200']}
-									onclick={() => previewFile(file)}
-								>
-									<td class="w-12">
-										<div
-											class="tooltip"
-											data-tip={playing && file.path === selectedPath ? 'Pause' : 'Play'}
-										>
-											<button
-												type="button"
-												class={[
-													'btn btn-ghost btn-sm btn-square',
-													playing && file.path === selectedPath && 'btn-active'
-												]}
-												aria-label={playing && file.path === selectedPath ? 'Pause' : 'Play'}
-												onclick={(event) => {
-													event.stopPropagation();
-													togglePlay(file);
-												}}
-											>
-												{#if playing && file.path === selectedPath}
-													{@render pauseIcon()}
-												{:else}
-													{@render playIcon()}
-												{/if}
-											</button>
-										</div>
-									</td>
-									<td>
-										<div class="flex min-w-0 flex-col">
-											<span class="truncate">{file.name}</span>
-											{#if file.parent_path}
-												<span class="truncate text-sm opacity-70">{file.parent_path}</span>
-											{/if}
-										</div>
-									</td>
-									<td class="whitespace-nowrap">{formatDuration(file.duration_seconds)}</td>
-									<td>
-										<div class="flex items-center gap-1">
-											<div class="tooltip" data-tip="Download">
-												<button
-													type="button"
-													class="btn btn-ghost btn-sm btn-square"
-													aria-label="Download"
-													disabled={downloading}
-													onclick={(event) => {
-														event.stopPropagation();
-														void downloadFile(file);
-													}}
-												>
-													{#if downloading && file.path === selectedPath}
-														<span class="loading loading-spinner" aria-label="Downloading"></span>
-													{:else}
-														{@render downloadIcon()}
-													{/if}
-												</button>
-											</div>
-											<div class="tooltip" data-tip="Drag">
-												<button
-													type="button"
-													class="btn btn-ghost btn-sm btn-square cursor-grab"
-													aria-label="Drag"
-													disabled={downloading}
-													onpointerdown={(event) => void dragFile(event, file)}
-												>
-													{@render dragIcon()}
-												</button>
-											</div>
-										</div>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{/if}
-
+			<FilterBar {resultLabel} />
+			<div class="min-h-0 flex-1 overflow-y-auto">
+				<SampleList
+					{items}
+					{selectedPath}
+					{playingPath}
+					{cached}
+					{downloadingPath}
+					onpreview={previewFile}
+					ontogglePlay={togglePlay}
+					ondownload={downloadFile}
+					onpointerdown={onRowPointerDown}
+					onstopGesture={stopRowGesture}
+				/>
+			</div>
 			{#if total > limit}
-				<div class="join">
-					{#if offset > 0}
-						<a class="btn join-item" href={resolve(filesHref(previousOffset))}>Previous</a>
-					{:else}
-						<button type="button" class="btn join-item" disabled>Previous</button>
-					{/if}
-					<button type="button" class="btn join-item" disabled>{pageNumber} / {pageCount}</button>
-					{#if nextOffset < total}
-						<a class="btn join-item" href={resolve(filesHref(nextOffset))}>Next</a>
-					{:else}
-						<button type="button" class="btn join-item" disabled>Next</button>
-					{/if}
-				</div>
+				<SamplePager
+					{pageNumber}
+					{pageCount}
+					previousHref={filesHref(previousOffset)}
+					nextHref={filesHref(nextOffset)}
+					hasPrevious={offset > 0}
+					hasNext={nextOffset < total}
+				/>
 			{/if}
-		{/if}
-		{#if cachePath}
-			<p class="truncate text-sm opacity-70">{cachePath}</p>
 		{/if}
 	</main>
-</div>
+	{#if selected}
+		<SamplePlayer
+			sample={selected}
+			{playing}
+			bind:currentTime
+			{duration}
+			bind:volume
+			bind:looped
+			onplaypause={() => togglePlay(selected)}
+			onprev={() => skipSample(-1)}
+			onnext={() => skipSample(1)}
+		/>
+	{/if}
+</LibraryShell>
 
 {#if selected}
 	{#key selected.path}
 		<audio
-			bind:this={audioEl}
+			bind:currentTime
+			bind:duration
+			bind:volume
+			bind:paused
 			hidden
 			autoplay
+			loop={looped}
 			src={audioUrl(selected.path)}
-			onplay={() => (playing = true)}
-			onpause={() => (playing = false)}
-			onended={() => (playing = false)}
 		></audio>
 	{/key}
 {/if}
