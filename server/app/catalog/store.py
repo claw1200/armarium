@@ -37,6 +37,11 @@ class CatalogStore:
             session.commit()
         return len(records)
 
+    def get(self, relative_path: str) -> FileRecord | None:
+        with self._session() as session:
+            record = session.get(FileRecord, relative_path)
+            return record.detached() if record is not None else None
+
     def list_folder(self, folder: str) -> CatalogListing:
         with self._session() as session:
             files = [

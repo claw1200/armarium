@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.catalog import AppContext, router as catalog_router
+from app.api.audio import router as audio_router
+from app.api.catalog import router as catalog_router
+from app.api.context import AppContext
 from app.catalog.store import CatalogStore
 from app.config import Settings
 from app.indexer.scan import scan_library
@@ -26,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application = FastAPI(title="Armarium", lifespan=lifespan)
     application.include_router(catalog_router)
+    application.include_router(audio_router)
     return application
 
 
