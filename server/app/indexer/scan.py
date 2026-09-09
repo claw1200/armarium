@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
 
+from app.catalog.models import FileRecord
 from app.catalog.paths import file_name, is_audio_file, parent_path, relative_posix
-from app.catalog.store import CatalogStore, FileRecord
+from app.catalog.store import CatalogStore
 from app.indexer.audio import read_audio_info
 
 

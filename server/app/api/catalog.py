@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.catalog.models import FileRecord, FolderEntry
 from app.catalog.paths import parse_folder_path
-from app.catalog.store import CatalogStore, FileRecord, FolderEntry
+from app.catalog.store import CatalogStore
 from app.config import Settings
 from app.indexer.scan import scan_library
 

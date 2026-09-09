@@ -6,6 +6,7 @@ dependencies = [
     "fastapi>=0.115",
     "mutagen>=1.47",
     "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.32",
 ]
 
