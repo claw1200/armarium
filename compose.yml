@@ -1,0 +1,14 @@
+services:
+  server:
+    build: ./server
+    ports:
+      - "8000:8000"
+    environment:
+      LIBRARY_ROOT: /library
+      DATABASE_PATH: /data/catalog.sqlite
+    volumes:
+      - ${ARMARIUM_LIBRARY:-./server/example-library}:/library:ro
+      - catalog-data:/data
+
+volumes:
+  catalog-data:
