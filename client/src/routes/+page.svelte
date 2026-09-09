@@ -2,12 +2,17 @@
 	import { resolve } from '$app/paths';
 	import { navigating, page } from '$app/state';
 	import { audioUrl, type CatalogFile } from '$lib/api';
+	import { cacheSample } from '$lib/cache';
 	import { breadcrumbs, folderHref } from '$lib/catalog-path';
+	import { toErrorMessage } from '$lib/error';
 	import { formatDuration, formatSize } from '$lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 	let selectedPath = $state<string | null>(null);
+	let cachePath = $state<string | null>(null);
+	let cacheError = $state<string | null>(null);
+	let downloading = $state(false);
 
 	let listing = $derived(data.listing);
 	let crumbs = $derived(breadcrumbs(listing?.path ?? page.url.searchParams.get('path') ?? ''));
@@ -16,6 +21,35 @@
 
 	function selectFile(file: CatalogFile): void {
 		selectedPath = file.path;
+		cachePath = null;
+		cacheError = null;
+		downloading = false;
+	}
+
+	async function downloadSelected(): Promise<void> {
+		if (!selected) {
+			return;
+		}
+		const path = selected.path;
+		downloading = true;
+		cachePath = null;
+		cacheError = null;
+		try {
+			const localPath = await cacheSample(path);
+			if (path !== selectedPath) {
+				return;
+			}
+			cachePath = localPath;
+		} catch (error) {
+			if (path !== selectedPath) {
+				return;
+			}
+			cacheError = toErrorMessage(error);
+		} finally {
+			if (path === selectedPath) {
+				downloading = false;
+			}
+		}
 	}
 </script>
 
@@ -97,6 +131,20 @@
 			{#key selected.path}
 				<audio class="w-full" controls autoplay src={audioUrl(selected.path)}></audio>
 			{/key}
+			<div class="mt-2 flex items-center gap-2">
+				<button type="button" class="btn" disabled={downloading} onclick={downloadSelected}>
+					Download
+				</button>
+				{#if downloading}
+					<span class="loading loading-spinner" aria-label="Downloading"></span>
+				{/if}
+			</div>
+			{#if cachePath}
+				<p class="mt-2 truncate">{cachePath}</p>
+			{/if}
+			{#if cacheError}
+				<div role="alert" class="alert alert-error mt-2">{cacheError}</div>
+			{/if}
 		</div>
 	{/if}
 </div>
