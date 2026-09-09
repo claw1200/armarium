@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.audio import router as audio_router
 from app.api.catalog import router as catalog_router
@@ -27,6 +28,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             store.close()
 
     application = FastAPI(title="Armarium", lifespan=lifespan)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=resolved.cors_origins,
+        allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
+        allow_headers=["*"],
+    )
     application.include_router(catalog_router)
     application.include_router(audio_router)
     return application

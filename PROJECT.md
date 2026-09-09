@@ -47,7 +47,7 @@ armarium/
 
 The SvelteKit UI is the desktop frontend and, later, the optional website. Native work stays in `src-tauri`. No shared package until the API contract needs one (OpenAPI from FastAPI is enough).
 
-Indexer: periodic scan first; live watch later. Waveforms and heavy analysis are on-demand, not a full-library import. The catalog API is `POST /catalog/scan` and `GET /catalog/entries?path=`. Audio is `GET /audio/{path}` (the catalog id is the file’s relative path) with HTTP range requests; bytes are read from disk. Folders are derived from indexed file paths.
+Indexer: periodic scan first; live watch later. Waveforms and heavy analysis are on-demand, not a full-library import. The catalog API is `POST /catalog/scan` and `GET /catalog/entries?path=`. Audio is `GET /audio/{path}` (the catalog id is the file’s relative path) with HTTP range requests; bytes are read from disk. Folders are derived from indexed file paths. The Svelte UI browses those listings and previews via the range URL. CORS allows configured UI origins (default: the Vite dev server).
 
 ## Quality
 
