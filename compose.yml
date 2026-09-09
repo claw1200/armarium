@@ -1,5 +1,5 @@
 services:
-  server:
+  armarium-server:
     build: ./server
     ports:
       - "8000:8000"
