@@ -10,12 +10,14 @@ use reqwest::Url;
 #[derive(Debug, PartialEq, Eq)]
 pub enum CacheError {
     InvalidPath,
+    Missing,
 }
 
 impl std::fmt::Display for CacheError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidPath => write!(f, "path must stay inside the cache"),
+            Self::Missing => write!(f, "sample is not cached"),
         }
     }
 }
@@ -44,7 +46,7 @@ impl std::error::Error for DownloadError {}
 impl From<CacheError> for DownloadError {
     fn from(error: CacheError) -> Self {
         match error {
-            CacheError::InvalidPath => Self::InvalidPath,
+            CacheError::InvalidPath | CacheError::Missing => Self::InvalidPath,
         }
     }
 }
@@ -76,6 +78,16 @@ pub fn relative_cache_path(relative: &str) -> Result<PathBuf, CacheError> {
 
 pub fn cached_file_path(cache_root: &Path, relative: &str) -> Result<PathBuf, CacheError> {
     Ok(cache_root.join(relative_cache_path(relative)?))
+}
+
+pub fn complete_file(cache_root: &Path, relative: &str) -> Result<PathBuf, CacheError> {
+    let dest = cached_file_path(cache_root, relative)?;
+    reject_symlinks_under(cache_root, &dest)?;
+    match fs::symlink_metadata(&dest) {
+        Ok(meta) if meta.is_file() && meta.len() > 0 => Ok(dest),
+        Ok(meta) if meta.file_type().is_symlink() => Err(CacheError::InvalidPath),
+        _ => Err(CacheError::Missing),
+    }
 }
 
 pub fn audio_url(api_base: &str, relative: &str) -> Result<Url, DownloadError> {
@@ -137,13 +149,11 @@ pub fn download(
     relative: &str,
     api_base: &str,
 ) -> Result<PathBuf, DownloadError> {
-    let dest = cached_file_path(cache_root, relative)?;
-    reject_symlinks_under(cache_root, &dest)?;
-    if let Ok(meta) = fs::symlink_metadata(&dest) {
-        if meta.is_file() && meta.len() > 0 {
-            return Ok(dest);
-        }
-    }
+    let dest = match complete_file(cache_root, relative) {
+        Ok(dest) => return Ok(dest),
+        Err(CacheError::Missing) => cached_file_path(cache_root, relative)?,
+        Err(error) => return Err(error.into()),
+    };
     let url = audio_url(api_base, relative)?;
     let mut response = http_client()
         .get(url)
@@ -200,6 +210,21 @@ mod tests {
             Err(CacheError::InvalidPath)
         );
         assert_eq!(relative_cache_path(""), Err(CacheError::InvalidPath));
+    }
+
+    #[test]
+    fn complete_file_requires_a_non_empty_cache_hit() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            complete_file(dir.path(), "Drums/Kicks/kick.wav"),
+            Err(CacheError::Missing)
+        );
+        let dest = cached_file_path(dir.path(), "Drums/Kicks/kick.wav").unwrap();
+        write_complete_file(&dest, b"RIFF").unwrap();
+        assert_eq!(
+            complete_file(dir.path(), "Drums/Kicks/kick.wav").unwrap(),
+            dest
+        );
     }
 
     #[test]

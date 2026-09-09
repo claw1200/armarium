@@ -32,13 +32,42 @@ async fn cache_sample(
     .map_err(|error| error.to_string())?
 }
 
+#[derive(serde::Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+enum CachedDrag {
+    Started { path: String },
+    NeedsDownload,
+}
+
+#[tauri::command]
+fn start_cached_drag(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    relative_path: String,
+) -> Result<CachedDrag, String> {
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    let root = cache::cache_root(&home);
+    match cache::complete_file(&root, &relative_path) {
+        Ok(dest) => {
+            let dest = file_drag::inside_cache(&root, &dest).map_err(|error| error.to_string())?;
+            file_drag::start(&window, std::slice::from_ref(&dest))?;
+            Ok(CachedDrag::Started {
+                path: dest.to_string_lossy().into_owned(),
+            })
+        }
+        Err(cache::CacheError::Missing) => Ok(CachedDrag::NeedsDownload),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             fixture_sample,
             start_fixture_drag,
-            cache_sample
+            cache_sample,
+            start_cached_drag
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

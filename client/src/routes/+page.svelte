@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { navigating, page } from '$app/state';
 	import { audioUrl, type CatalogFile } from '$lib/api';
-	import { cacheSample } from '$lib/cache';
+	import { cacheSample, startCachedDrag } from '$lib/cache';
 	import { breadcrumbs, folderHref } from '$lib/catalog-path';
 	import { toErrorMessage } from '$lib/error';
 	import { formatDuration, formatSize } from '$lib/format';
@@ -55,6 +55,30 @@
 			if (gen === downloadGen) {
 				downloading = false;
 			}
+		}
+	}
+
+	async function dragSelected(event: PointerEvent): Promise<void> {
+		if (event.button !== 0 || !selected || downloading) {
+			return;
+		}
+		const path = selected.path;
+		try {
+			const result = await startCachedDrag(path);
+			if (path !== selectedPath) {
+				return;
+			}
+			if (result.status === 'needsDownload') {
+				await downloadSelected();
+				return;
+			}
+			cachePath = result.path;
+			cacheError = null;
+		} catch (error) {
+			if (path !== selectedPath) {
+				return;
+			}
+			cacheError = toErrorMessage(error);
 		}
 	}
 </script>
@@ -138,9 +162,19 @@
 				<audio class="w-full" controls autoplay src={audioUrl(selected.path)}></audio>
 			{/key}
 			<div class="mt-2 flex items-center gap-2">
-				<button type="button" class="btn" disabled={downloading} onclick={downloadSelected}>
-					Download
-				</button>
+				<div class="join">
+					<button type="button" class="btn join-item" disabled={downloading} onclick={downloadSelected}>
+						Download
+					</button>
+					<button
+						type="button"
+						class="btn join-item cursor-grab"
+						disabled={downloading}
+						onpointerdown={dragSelected}
+					>
+						Drag
+					</button>
+				</div>
 				{#if downloading}
 					<span class="loading loading-spinner" aria-label="Downloading"></span>
 				{/if}
