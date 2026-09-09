@@ -1,7 +1,10 @@
-use std::fs::{self, File};
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+use std::time::Duration;
 
+use reqwest::StatusCode;
 use reqwest::Url;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -86,21 +89,47 @@ pub fn audio_url(api_base: &str, relative: &str) -> Result<Url, DownloadError> {
     Ok(url)
 }
 
+fn reject_symlinks_under(root: &Path, dest: &Path) -> Result<(), CacheError> {
+    let relative = dest
+        .strip_prefix(root)
+        .map_err(|_| CacheError::InvalidPath)?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(_) => return Err(CacheError::InvalidPath),
+            Ok(meta) if meta.file_type().is_symlink() => return Err(CacheError::InvalidPath),
+            Ok(_) => {}
+        }
+    }
+    Ok(())
+}
+
 fn replace_with_reader<R: io::Read>(dest: &Path, reader: &mut R) -> io::Result<()> {
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let tmp = partial_path(dest);
-    let wrote = File::create(&tmp)
-        .and_then(|mut file| {
-            io::copy(reader, &mut file)?;
-            file.sync_all()
-        })
-        .and_then(|()| fs::rename(&tmp, dest));
-    if wrote.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    wrote
+    let parent = dest.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            CacheError::InvalidPath.to_string(),
+        )
+    })?;
+    fs::create_dir_all(parent)?;
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+    io::copy(reader, tmp.as_file_mut())?;
+    tmp.as_file_mut().sync_all()?;
+    tmp.persist(dest).map_err(|error| error.error)?;
+    Ok(())
+}
+
+fn http_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: LazyLock<reqwest::blocking::Client> = LazyLock::new(|| {
+        reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(300))
+            .build()
+            .expect("http client")
+    });
+    &CLIENT
 }
 
 pub fn download(
@@ -109,24 +138,23 @@ pub fn download(
     api_base: &str,
 ) -> Result<PathBuf, DownloadError> {
     let dest = cached_file_path(cache_root, relative)?;
-    if dest.is_file() && dest.metadata()?.len() > 0 {
-        return Ok(dest);
+    reject_symlinks_under(cache_root, &dest)?;
+    if let Ok(meta) = fs::symlink_metadata(&dest) {
+        if meta.is_file() && meta.len() > 0 {
+            return Ok(dest);
+        }
     }
     let url = audio_url(api_base, relative)?;
-    let mut response =
-        reqwest::blocking::get(url).map_err(|error| DownloadError::Http(error.to_string()))?;
+    let mut response = http_client()
+        .get(url)
+        .send()
+        .map_err(|error| DownloadError::Http(error.to_string()))?;
     let status = response.status();
-    if !status.is_success() {
+    if status != StatusCode::OK {
         return Err(DownloadError::Http(format!("download failed ({status})")));
     }
     replace_with_reader(&dest, &mut response)?;
     Ok(dest)
-}
-
-fn partial_path(dest: &Path) -> PathBuf {
-    let mut tmp = dest.as_os_str().to_os_string();
-    tmp.push(".partial");
-    PathBuf::from(tmp)
 }
 
 #[cfg(test)]
@@ -190,13 +218,17 @@ mod tests {
         let dest = dir.path().join("Drums").join("Kicks").join("kick.wav");
         write_complete_file(&dest, b"RIFF").unwrap();
         assert_eq!(fs::read(&dest).unwrap(), b"RIFF");
-        assert!(!partial_path(&dest).exists());
+        let names: Vec<_> = fs::read_dir(dest.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, [std::ffi::OsString::from("kick.wav")]);
     }
 
     #[test]
     fn download_lands_at_the_mirrored_path() {
         let dir = tempfile::tempdir().unwrap();
-        let (base, server) = spawn_audio_server(b"RIFFWAVE");
+        let (base, server) = spawn_audio_server(200, b"RIFFWAVE");
         let dest = download(dir.path(), "Drums/Kicks/kick.wav", &base).unwrap();
         server.join().unwrap();
         assert_eq!(
@@ -204,7 +236,21 @@ mod tests {
             dir.path().join("Drums").join("Kicks").join("kick.wav")
         );
         assert_eq!(fs::read(&dest).unwrap(), b"RIFFWAVE");
-        assert!(!partial_path(&dest).exists());
+    }
+
+    #[test]
+    fn download_rejects_a_partial_response() {
+        let dir = tempfile::tempdir().unwrap();
+        let (base, server) = spawn_audio_server(206, b"RIFF");
+        let error = download(dir.path(), "Drums/Kicks/kick.wav", &base).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(error, DownloadError::Http(message) if message.contains("206")));
+        assert!(!dir
+            .path()
+            .join("Drums")
+            .join("Kicks")
+            .join("kick.wav")
+            .exists());
     }
 
     #[test]
@@ -240,7 +286,18 @@ mod tests {
         );
     }
 
-    fn spawn_audio_server(body: &'static [u8]) -> (String, thread::JoinHandle<()>) {
+    #[cfg(unix)]
+    #[test]
+    fn download_rejects_a_symlink_in_the_cache_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("Drums")).unwrap();
+        let error = download(dir.path(), "Drums/Kicks/kick.wav", "http://127.0.0.1:1").unwrap_err();
+        assert!(matches!(error, DownloadError::InvalidPath));
+        assert!(outside.path().read_dir().unwrap().next().is_none());
+    }
+
+    fn spawn_audio_server(status: u16, body: &'static [u8]) -> (String, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let handle = thread::spawn(move || {
@@ -256,8 +313,13 @@ mod tests {
             }
             let request = String::from_utf8_lossy(&request);
             assert!(request.contains("GET /audio/Drums/Kicks/kick.wav"));
+            let reason = if status == 200 {
+                "OK"
+            } else {
+                "Partial Content"
+            };
             let header = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 body.len()
             );
             stream.write_all(header.as_bytes()).unwrap();

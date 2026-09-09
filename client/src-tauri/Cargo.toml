@@ -16,8 +16,6 @@ drag = "2.1.1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
-
-[dev-dependencies]
 tempfile = "3"
 
 [profile.release]

@@ -13,6 +13,7 @@
 	let cachePath = $state<string | null>(null);
 	let cacheError = $state<string | null>(null);
 	let downloading = $state(false);
+	let downloadGen = 0;
 
 	let listing = $derived(data.listing);
 	let crumbs = $derived(breadcrumbs(listing?.path ?? page.url.searchParams.get('path') ?? ''));
@@ -20,33 +21,38 @@
 	let loading = $derived(navigating.to !== null);
 
 	function selectFile(file: CatalogFile): void {
+		if (file.path === selectedPath) {
+			return;
+		}
 		selectedPath = file.path;
 		cachePath = null;
 		cacheError = null;
 		downloading = false;
+		downloadGen += 1;
 	}
 
 	async function downloadSelected(): Promise<void> {
-		if (!selected) {
+		if (!selected || downloading) {
 			return;
 		}
 		const path = selected.path;
+		const gen = ++downloadGen;
 		downloading = true;
 		cachePath = null;
 		cacheError = null;
 		try {
 			const localPath = await cacheSample(path);
-			if (path !== selectedPath) {
+			if (gen !== downloadGen) {
 				return;
 			}
 			cachePath = localPath;
 		} catch (error) {
-			if (path !== selectedPath) {
+			if (gen !== downloadGen) {
 				return;
 			}
 			cacheError = toErrorMessage(error);
 		} finally {
-			if (path === selectedPath) {
+			if (gen === downloadGen) {
 				downloading = false;
 			}
 		}
