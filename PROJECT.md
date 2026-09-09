@@ -41,17 +41,17 @@ armarium/
   AGENTS.md
   compose.yml          # server (+ later browse-only web)
   server/              # FastAPI app, indexer, Dockerfile
-  client/              # Svelte UI
+  client/              # SvelteKit SPA (desktop UI, later the website)
     src-tauri/         # Rust: cache, downloads, native drag
 ```
 
-The Svelte UI is the desktop frontend and, later, the optional website. Native work stays in `src-tauri`. No shared package until the API contract needs one (OpenAPI from FastAPI is enough).
+The SvelteKit UI is the desktop frontend and, later, the optional website. Native work stays in `src-tauri`. No shared package until the API contract needs one (OpenAPI from FastAPI is enough).
 
 Indexer: periodic scan first; live watch later. Waveforms and heavy analysis are on-demand, not a full-library import.
 
 ## Quality
 
-Linters and tests ship with the first code, and run on every PR and on `master`. Configured lint rules must pass 100%; disagreements go in the linter config (e.g. no forced Python docstrings), not as ignored failures.
+After slice 1, all work lands through PRs so changes stay reviewable. Linters and tests ship with the first code, and run on every PR and on `master`. Configured lint rules must pass 100%; disagreements go in the linter config (e.g. no forced Python docstrings), not as ignored failures.
 
 Unit tests are useful; they are not the whole suite. Add integration coverage from the start, automated. Test code follows the same quality bar as production. Prefer fewer tests that really exercise a behaviour over broad, low-value cases.
 
