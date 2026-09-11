@@ -34,6 +34,76 @@ def test_scan_indexes_nested_audio_and_skips_other_files(tmp_path: Path) -> None
     store.close()
 
 
+def test_unchanged_rescan_does_not_reread_audio(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = write_drum_library(tmp_path / "library")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    assert scan_library(library, store) == 2
+
+    def fail_read(_path: Path) -> None:
+        raise AssertionError("unchanged files must not be opened")
+
+    monkeypatch.setattr(scan_module, "read_audio_info", fail_read)
+    assert scan_library(library, store) == 2
+    kicks = store.list_folder("Drums/Kicks")
+    assert kicks.files[0].sample_rate == 44100
+    store.close()
+
+
+def test_rescan_updates_a_changed_file(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    path = library / "kick.wav"
+    write_sine_wav(path, seconds=0.1)
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+    original = store.list_folder("").files[0]
+    write_sine_wav(path, seconds=0.4, frequency=200)
+    assert scan_library(library, store) == 1
+    updated = store.list_folder("").files[0]
+    assert updated.size_bytes != original.size_bytes
+    assert updated.duration_seconds == pytest.approx(0.4, abs=0.02)
+    store.close()
+
+
+def test_rescan_keeps_a_file_when_audio_read_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = tmp_path / "library"
+    path = library / "kick.wav"
+    write_sine_wav(path, seconds=0.1)
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+    original = store.list_folder("").files[0]
+    write_sine_wav(path, seconds=0.4, frequency=200)
+
+    def fail_read(_path: Path) -> None:
+        raise OSError("unreadable")
+
+    monkeypatch.setattr(scan_module, "read_audio_info", fail_read)
+    assert scan_library(library, store) == 1
+    kept = store.list_folder("").files[0]
+    assert kept.relative_path == original.relative_path
+    assert kept.duration_seconds == original.duration_seconds
+    store.close()
+
+
+def test_rescan_drops_a_deleted_file(tmp_path: Path) -> None:
+    library = write_drum_library(tmp_path / "library")
+    extra = library / "gone.wav"
+    write_sine_wav(extra)
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    assert scan_library(library, store) == 3
+    extra.unlink()
+    assert scan_library(library, store) == 2
+    assert store.get("gone.wav") is None
+    store.close()
+
+
 def test_rescan_picks_up_a_new_file(tmp_path: Path) -> None:
     library = tmp_path / "library"
     write_sine_wav(library / "Drums" / "Kicks" / "kick.wav")
@@ -52,7 +122,7 @@ def test_scan_skips_a_vanished_file(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     library = write_drum_library(tmp_path / "library")
     vanished = library / "gone.wav"
     write_sine_wav(vanished)
-    walked = scan_module.iter_audio_files(library)
+    walked = list(scan_module.iter_audio_files(library))
 
     def after_unlink(_library_root: Path) -> list[Path]:
         vanished.unlink()
@@ -89,7 +159,7 @@ def test_store_serializes_concurrent_reads_and_writes(tmp_path: Path) -> None:
 
     def write_repeatedly() -> None:
         for _ in range(20):
-            store.replace_all(records)
+            store.apply_scan(records, [])
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         jobs = [pool.submit(read_repeatedly) for _ in range(3)]

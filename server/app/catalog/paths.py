@@ -45,10 +45,6 @@ def audio_disk_path(library_root: Path, relative: str) -> Path | None:
     return path
 
 
-def relative_posix(library_root: Path, path: Path) -> str:
-    return path.resolve().relative_to(library_root.resolve()).as_posix()
-
-
 def parent_path(relative_posix_path: str) -> str:
     if "/" not in relative_posix_path:
         return ""
