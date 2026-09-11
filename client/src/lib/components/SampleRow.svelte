@@ -2,7 +2,6 @@
 	import type { CatalogFile } from '$lib/api';
 	import { fileStem, formatAudioFormat, formatDuration } from '$lib/format';
 	import { missingMeta } from '$lib/placeholders';
-	import Icon from './Icon.svelte';
 	import IconButton from './IconButton.svelte';
 	import OverflowMenu from './OverflowMenu.svelte';
 	import Waveform from './Waveform.svelte';
@@ -33,10 +32,11 @@
 		onstopGesture: (event: Event) => void;
 	} = $props();
 
-	let liked = $state('');
+	let liked = $state(false);
 	let title = $derived(fileStem(file.name));
 	let playLabel = $derived(playing ? 'Pause' : 'Play');
-	let likeName = $derived(`like-${file.path}`);
+	let likeLabel = $derived(liked ? 'Unlike' : 'Like');
+	let downloadLabel = $derived(downloading ? 'Downloading' : 'Download');
 
 	function stopAndToggle(event: MouseEvent): void {
 		event.stopPropagation();
@@ -46,6 +46,11 @@
 	function stopAndDownload(event: MouseEvent): void {
 		event.stopPropagation();
 		void ondownload(file);
+	}
+
+	function stopAndToggleLike(event: MouseEvent): void {
+		event.stopPropagation();
+		liked = !liked;
 	}
 
 	function onRowKeydown(event: KeyboardEvent): void {
@@ -59,7 +64,7 @@
 
 <tr
 	data-path={file.path}
-	class={[cached ? 'cursor-grab' : 'cursor-pointer', selected && 'bg-base-200', 'focus:outline-none']}
+	class={[cached ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer', selected && 'bg-base-200', 'focus:outline-none']}
 	tabindex="-1"
 	onpointerdown={(event) => onpointerdown(event, file)}
 	onclick={() => onpreview(file)}
@@ -74,8 +79,8 @@
 				onpointerdown={onstopGesture}
 				onclick={stopAndToggle}
 			>
-				<Icon name="pause" class="swap-on size-4" />
-				<Icon name="play" class="swap-off size-4" />
+				<span class="icon-[lucide--pause] swap-on size-4" aria-hidden="true"></span>
+				<span class="icon-[lucide--play] swap-off size-4" aria-hidden="true"></span>
 			</button>
 		</div>
 	</td>
@@ -95,41 +100,33 @@
 	<td class="whitespace-nowrap opacity-70">{missingMeta}</td>
 	<td class="whitespace-nowrap opacity-70">{missingMeta}</td>
 	<td class="whitespace-nowrap">
-		<div class="flex items-center justify-end">
-			<div class="tooltip" data-tip={liked ? 'Unlike' : 'Like'}>
-				<div class="rating rating-xs">
-					<input
-						type="radio"
-						name={likeName}
-						class="rating-hidden"
-						aria-label="Unlike"
-						value=""
-						bind:group={liked}
-						onpointerdown={onstopGesture}
-						onclick={onstopGesture}
-					/>
-					<input
-						type="radio"
-						name={likeName}
-						class="mask mask-heart"
-						aria-label="Like"
-						value="liked"
-						bind:group={liked}
-						onpointerdown={onstopGesture}
-						onclick={onstopGesture}
-					/>
-				</div>
-			</div>
+		<div class="flex items-center justify-end gap-2">
+			<IconButton label={likeLabel} active={liked} onpointerdown={onstopGesture} onclick={stopAndToggleLike}>
+				<span
+					class={['icon-[lucide--heart] size-4', liked && 'text-error']}
+					aria-hidden="true"
+				></span>
+			</IconButton>
 			{#if cached}
-				<div class="tooltip" data-tip="Cached">
-					<span class="status status-success" aria-label="Cached"></span>
+				<div class="tooltip" data-tip="Downloaded">
+					<span
+						class="inline-flex size-6 items-center justify-center"
+						aria-label="Downloaded"
+					>
+						<span class="icon-[lucide--file-check] size-4 text-success" aria-hidden="true"></span>
+					</span>
 				</div>
 			{:else}
-				<IconButton label="Download" disabled={downloadBusy} onclick={stopAndDownload}>
+				<IconButton
+					label={downloadLabel}
+					disabled={downloadBusy}
+					onpointerdown={onstopGesture}
+					onclick={stopAndDownload}
+				>
 					{#if downloading}
-						<span class="loading loading-spinner loading-xs" aria-label="Downloading"></span>
+						<span class="icon-[lucide--loader-circle] size-4 animate-spin" aria-hidden="true"></span>
 					{:else}
-						<Icon name="download" />
+						<span class="icon-[lucide--download] size-4" aria-hidden="true"></span>
 					{/if}
 				</IconButton>
 			{/if}

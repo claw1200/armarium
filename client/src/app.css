@@ -1,5 +1,80 @@
 @import 'tailwindcss';
-@plugin 'daisyui';
+@source './**/*.{html,svelte,ts,js}';
+@plugin '@iconify/tailwind4';
+
+@plugin 'daisyui' {
+	themes: 'armarium-light' --default 'armarium-dark' --prefersdark;
+}
+
+@plugin 'daisyui/theme' {
+	name: 'armarium-light';
+	default: true;
+	prefersdark: false;
+	color-scheme: 'light';
+	--color-base-100: oklch(100% 0 0);
+	--color-base-200: oklch(97% 0.008 75);
+	--color-base-300: oklch(90% 0.004 75);
+	--color-base-content: oklch(0% 0 0);
+	--color-primary: oklch(52% 0.105 223.128);
+	--color-primary-content: oklch(100% 0 0);
+	--color-secondary: oklch(38% 0.189 293.745);
+	--color-secondary-content: oklch(100% 0 0);
+	--color-accent: oklch(52% 0.223 3.958);
+	--color-accent-content: oklch(96% 0.018 272.314);
+	--color-neutral: oklch(37% 0.034 259.733);
+	--color-neutral-content: oklch(98% 0.002 247.839);
+	--color-info: oklch(52% 0.105 223.128);
+	--color-info-content: oklch(97% 0.013 236.62);
+	--color-success: oklch(51% 0.096 186.391);
+	--color-success-content: oklch(100% 0 0);
+	--color-warning: oklch(55% 0.163 48.998);
+	--color-warning-content: oklch(100% 0 0);
+	--color-error: oklch(50% 0.213 27.518);
+	--color-error-content: oklch(100% 0 0);
+	--radius-selector: 0.5rem;
+	--radius-field: 1rem;
+	--radius-box: 0.5rem;
+	--size-selector: 0.25rem;
+	--size-field: 0.25rem;
+	--border: 1px;
+	--depth: 0;
+	--noise: 0;
+}
+
+@plugin 'daisyui/theme' {
+	name: 'armarium-dark';
+	default: false;
+	prefersdark: true;
+	color-scheme: 'dark';
+	--color-base-100: oklch(22% 0.006 286);
+	--color-base-200: oklch(15% 0.005 286);
+	--color-base-300: oklch(10% 0.004 286);
+	--color-base-content: oklch(100% 0 0);
+	--color-primary: oklch(52% 0.105 223.128);
+	--color-primary-content: oklch(100% 0 0);
+	--color-secondary: oklch(38% 0.189 293.745);
+	--color-secondary-content: oklch(100% 0 0);
+	--color-accent: oklch(52% 0.223 3.958);
+	--color-accent-content: oklch(96% 0.018 272.314);
+	--color-neutral: oklch(87% 0.01 258.338);
+	--color-neutral-content: oklch(0% 0 0);
+	--color-info: oklch(52% 0.105 223.128);
+	--color-info-content: oklch(97% 0.013 236.62);
+	--color-success: oklch(51% 0.096 186.391);
+	--color-success-content: oklch(100% 0 0);
+	--color-warning: oklch(55% 0.163 48.998);
+	--color-warning-content: oklch(100% 0 0);
+	--color-error: oklch(50% 0.213 27.518);
+	--color-error-content: oklch(100% 0 0);
+	--radius-selector: 0.5rem;
+	--radius-field: 1rem;
+	--radius-box: 0.5rem;
+	--size-selector: 0.25rem;
+	--size-field: 0.25rem;
+	--border: 1px;
+	--depth: 0;
+	--noise: 0;
+}
 
 :root {
 	-webkit-user-select: none;
@@ -11,4 +86,66 @@ textarea,
 [contenteditable='true'] {
 	-webkit-user-select: text;
 	user-select: text;
+}
+
+.page-content {
+	view-transition-name: page-content;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 180ms;
+	animation-timing-function: ease-out;
+}
+
+::view-transition-old(root) {
+	animation-name: page-fade-out;
+}
+
+::view-transition-new(root) {
+	animation-name: page-fade-in;
+}
+
+::view-transition-group(page-content) {
+	animation-duration: 180ms;
+}
+
+::view-transition-old(page-content),
+::view-transition-new(page-content) {
+	animation-duration: 180ms;
+	animation-timing-function: ease-out;
+}
+
+::view-transition-old(page-content) {
+	animation-name: page-fade-out;
+}
+
+::view-transition-new(page-content) {
+	animation-name: page-fade-in;
+}
+
+@keyframes page-fade-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes page-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
 }

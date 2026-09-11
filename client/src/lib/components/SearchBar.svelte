@@ -1,6 +1,4 @@
 <script lang="ts">
-	import Icon from './Icon.svelte';
-
 	let {
 		value = '',
 		loading = false,
@@ -33,7 +31,7 @@
 
 <form class="w-full" role="search" onsubmit={submit}>
 	<label class="input input-sm w-full">
-		<Icon name="search" class="size-4 opacity-50" />
+		<span class="icon-[lucide--search] size-4 shrink-0 opacity-50" aria-hidden="true"></span>
 		<input
 			type="search"
 			name="q"
@@ -44,7 +42,7 @@
 			oninput={onInput}
 		/>
 		{#if loading}
-			<span class="loading loading-spinner loading-xs" aria-label="Loading"></span>
+			<span class="icon-[lucide--loader-circle] size-4 shrink-0 animate-spin" aria-label="Loading"></span>
 		{/if}
 	</label>
 </form>

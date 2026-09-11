@@ -1,8 +1,8 @@
 <script lang="ts">
+	import { fly } from 'svelte/transition';
 	import type { CatalogFile } from '$lib/api';
 	import { fileStem, formatAudioFormat } from '$lib/format';
 	import { missingMeta } from '$lib/placeholders';
-	import Icon from './Icon.svelte';
 	import IconButton from './IconButton.svelte';
 
 	let {
@@ -33,14 +33,16 @@
 	let seekMax = $derived(seekable ? duration : 0);
 	let progressMax = $derived(seekable ? duration : 1);
 	let progressValue = $derived(seekable ? currentTime : 0);
-	let folderLabel = $derived(
-		sample.parent_path.split('/').filter(Boolean).join(' ') || 'Library'
-	);
+	let folderLabel = $derived(sample.parent_path.split('/').filter(Boolean).join(' ') || 'Library');
 </script>
 
-<footer class="shrink-0 bg-base-200">
+<footer
+	class="shrink-0 border-t border-base-300 bg-base-100"
+	transition:fly={{ y: 16, duration: 180 }}
+>
 	<div class="relative leading-none">
-		<progress class="progress block h-1 w-full rounded-none" value={progressValue} max={progressMax}></progress>
+		<progress class="progress block h-1 w-full rounded-none" value={progressValue} max={progressMax}
+		></progress>
 		<input
 			type="range"
 			class="range range-xs absolute inset-0 w-full opacity-0"
@@ -55,7 +57,7 @@
 	<div class="flex items-center gap-2 px-3 py-2">
 		<div class="flex shrink-0 items-center">
 			<IconButton label="Previous" onclick={onprev}>
-				<Icon name="prev" />
+				<span class="icon-[lucide--skip-back] size-4" aria-hidden="true"></span>
 			</IconButton>
 			<div class="tooltip" data-tip={playLabel}>
 				<button
@@ -64,23 +66,28 @@
 					aria-label={playLabel}
 					onclick={onplaypause}
 				>
-					<Icon name="pause" class="swap-on size-5" />
-					<Icon name="play" class="swap-off size-5" />
+					<span class="icon-[lucide--pause] swap-on size-5" aria-hidden="true"></span>
+					<span class="icon-[lucide--play] swap-off size-5" aria-hidden="true"></span>
 				</button>
 			</div>
 			<IconButton label="Next" onclick={onnext}>
-				<Icon name="next" />
+				<span class="icon-[lucide--skip-forward] size-4" aria-hidden="true"></span>
 			</IconButton>
 		</div>
 
 		<div class="avatar avatar-placeholder shrink-0">
-			<div class="w-8 rounded-sm bg-base-300">
-				<Icon name="music" class="size-4 opacity-60" />
+			<div class="w-8 rounded-sm bg-base-200">
+				<span class="icon-[lucide--music] size-4 opacity-60" aria-hidden="true"></span>
 			</div>
 		</div>
 
-		<IconButton label="Loop" tip={looped ? 'Loop on' : 'Loop off'} active={looped} onclick={() => (looped = !looped)}>
-			<Icon name="loop" />
+		<IconButton
+			label="Loop"
+			tip={looped ? 'Loop on' : 'Loop off'}
+			active={looped}
+			onclick={() => (looped = !looped)}
+		>
+			<span class="icon-[lucide--repeat] size-4" aria-hidden="true"></span>
 		</IconButton>
 
 		<div class="min-w-0 flex-1">
@@ -104,7 +111,7 @@
 		</div>
 
 		<label class="flex shrink-0 items-center gap-2">
-			<Icon name="volume" class="size-4 opacity-70" />
+			<span class="icon-[lucide--volume-2] size-4 opacity-70" aria-hidden="true"></span>
 			<input
 				type="range"
 				class="range range-xs w-16 sm:w-20"

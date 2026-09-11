@@ -53,6 +53,8 @@ pub fn start(window: &tauri::WebviewWindow, paths: &[PathBuf]) -> Result<(), Str
         .collect::<Result<_, _>>()
         .map_err(|error| error.to_string())?;
 
+    #[cfg(target_os = "macos")]
+    let on_end_window = window.clone();
     drag::start_drag(
         #[cfg(target_os = "linux")]
         &window.gtk_window().map_err(|error| error.to_string())?,
@@ -60,10 +62,53 @@ pub fn start(window: &tauri::WebviewWindow, paths: &[PathBuf]) -> Result<(), Str
         window,
         drag::DragItem::Files(canonical),
         drag::Image::Raw(include_bytes!("../icons/32x32.png").to_vec()),
-        |_, _| {},
-        drag::Options::default(),
+        move |_, _| {
+            #[cfg(target_os = "macos")]
+            release_webview_mouse(&on_end_window);
+        },
+        drag::Options {
+            skip_animatation_on_cancel_or_failure: true,
+            ..drag::Options::default()
+        },
     )
     .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn release_webview_mouse(window: &tauri::WebviewWindow) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApp, NSEvent, NSEventModifierFlags, NSEventType, NSView};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
+        return;
+    };
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    unsafe {
+        let ns_view = &*(appkit.ns_view.as_ptr() as *const NSView);
+        let Some(ns_window) = ns_view.window() else {
+            return;
+        };
+        let Some(event) = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+            NSEventType::LeftMouseUp,
+            ns_window.mouseLocationOutsideOfEventStream(),
+            NSEventModifierFlags::empty(),
+            0.0,
+            ns_window.windowNumber(),
+            None,
+            0,
+            1,
+            0.0,
+        ) else {
+            return;
+        };
+        NSApp(mtm).postEvent_atStart(&event, false);
+    }
 }
 
 #[cfg(test)]

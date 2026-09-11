@@ -51,7 +51,7 @@
 	</form>
 
 	<div class="flex items-center justify-between gap-2 text-sm">
-		<span class="opacity-70">{resultLabel}</span>
+		<span class="opacity-80">{resultLabel}</span>
 		<select class="select select-ghost select-sm w-fit" bind:value={sort}>
 			{#each sortOptions as option (option)}
 				<option value={option}>{option}</option>

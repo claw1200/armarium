@@ -1,31 +1,36 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import Icon from './Icon.svelte';
 	import LibrarySidebar from './LibrarySidebar.svelte';
 	import SearchBar from './SearchBar.svelte';
+
+	const drawerId = 'library-drawer';
 
 	let {
 		q = '',
 		loading = false,
 		onquery,
 		onsearch,
-		children
+		children,
+		footer
 	}: {
 		q?: string;
 		loading?: boolean;
 		onquery?: (q: string) => void;
 		onsearch?: (q: string) => void;
 		children: Snippet;
+		footer?: Snippet;
 	} = $props();
+
+	let drawerOpen = $state(true);
 </script>
 
 <div class="drawer sm:drawer-open h-dvh">
-	<input id="library-drawer" type="checkbox" class="drawer-toggle" />
-	<div class="drawer-content flex min-h-0 flex-col overflow-hidden">
-		<div class="navbar min-h-12 shrink-0 gap-2 bg-base-200 px-3">
+	<input id={drawerId} type="checkbox" class="drawer-toggle" bind:checked={drawerOpen} />
+	<div class="drawer-content flex min-h-0 flex-col overflow-hidden bg-base-200">
+		<nav class="navbar min-h-12 shrink-0 gap-2 border-b border-base-300 bg-base-100 px-3">
 			<div class="navbar-start w-auto shrink-0">
-				<label for="library-drawer" class="btn btn-ghost btn-square btn-sm sm:hidden" aria-label="Open sidebar">
-					<Icon name="menu" />
+				<label for={drawerId} class="btn btn-square btn-ghost" aria-label="Toggle sidebar">
+					<span class="icon-[lucide--panel-left-open] size-5" aria-hidden="true"></span>
 				</label>
 			</div>
 			<div class="navbar-center min-w-0 flex-1">
@@ -37,13 +42,16 @@
 					<kbd class="kbd kbd-sm">↓</kbd>
 				</span>
 			</div>
-		</div>
-		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+		</nav>
+		<div class="page-content flex min-h-0 flex-1 flex-col overflow-hidden">
 			{@render children()}
 		</div>
+		{#if footer}
+			{@render footer()}
+		{/if}
 	</div>
-	<div class="drawer-side z-20">
-		<label for="library-drawer" class="drawer-overlay" aria-label="Close sidebar"></label>
-		<LibrarySidebar />
+	<div class="drawer-side is-drawer-close:overflow-visible z-20">
+		<label for={drawerId} class="drawer-overlay" aria-label="Close sidebar"></label>
+		<LibrarySidebar bind:drawerOpen />
 	</div>
 </div>

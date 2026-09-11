@@ -16,6 +16,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@iconify-json/lucide": "^1.2.131",
+    "@iconify/tailwind4": "^1.2.3",
     "@tauri-apps/api": "^2"
   },
   "devDependencies": {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { CatalogFile } from '$lib/api';
+	import EmptyState from './EmptyState.svelte';
 	import SampleRow from './SampleRow.svelte';
 
 	let {
@@ -30,7 +31,7 @@
 </script>
 
 {#if items.length === 0}
-	<div role="alert" class="alert">No samples in the library.</div>
+	<EmptyState text="No samples in the library." />
 {:else}
 	<div class="overflow-x-auto">
 		<table class="table table-pin-rows table-xs">

@@ -7,6 +7,7 @@
 		active = false,
 		disabled = false,
 		onclick,
+		onpointerdown,
 		children
 	}: {
 		label: string;
@@ -14,6 +15,7 @@
 		active?: boolean;
 		disabled?: boolean;
 		onclick?: (event: MouseEvent) => void;
+		onpointerdown?: (event: PointerEvent) => void;
 		children: Snippet;
 	} = $props();
 </script>
@@ -25,6 +27,7 @@
 		aria-label={label}
 		{disabled}
 		{onclick}
+		{onpointerdown}
 	>
 		{@render children()}
 	</button>

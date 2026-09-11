@@ -18,6 +18,12 @@ serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tempfile = "3"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["std", "NSApplication", "NSEvent", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.3", features = ["std", "NSGeometry"] }
+raw-window-handle = "0.6"
+
 [profile.release]
 codegen-units = 1
 lto = true
