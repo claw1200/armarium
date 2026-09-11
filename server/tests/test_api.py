@@ -81,12 +81,26 @@ def test_files_sorts_by_name(client: TestClient) -> None:
     assert [item["name"] for item in body["items"]] == ["kick.wav", "root.wav", "snare.wav"]
 
 
+def test_files_filters_by_path_substring(client: TestClient) -> None:
+    kicks = client.get("/catalog/files", params={"q": "KICK"}).json()
+    assert [item["path"] for item in kicks["items"]] == ["Drums/Kicks/kick.wav"]
+    assert kicks["total"] == 1
+    drums = client.get("/catalog/files", params={"q": " drums "}).json()
+    assert [item["path"] for item in drums["items"]] == [
+        "Drums/Kicks/kick.wav",
+        "Drums/Snares/snare.wav",
+    ]
+    missing = client.get("/catalog/files", params={"q": "nope"}).json()
+    assert missing == {"items": [], "total": 0, "limit": 50, "offset": 0}
+
+
 def test_files_rejects_invalid_query(client: TestClient) -> None:
     assert client.get("/catalog/files", params={"limit": 201}).status_code == 400
     assert client.get("/catalog/files", params={"limit": 0}).status_code == 400
     assert client.get("/catalog/files", params={"offset": -1}).status_code == 400
     assert client.get("/catalog/files", params={"sort": "bpm"}).status_code == 400
     assert client.get("/catalog/files", params={"prefix": "../etc"}).status_code == 400
+    assert client.get("/catalog/files", params={"q": "x" * 201}).status_code == 400
 
 
 def test_files_empty_library(tmp_path: Path) -> None:

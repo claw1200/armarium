@@ -33,6 +33,7 @@ export type CatalogFilesQuery = {
 	offset?: number;
 	limit?: number;
 	prefix?: string;
+	q?: string;
 	sort?: 'path' | 'name' | 'duration';
 };
 
@@ -67,6 +68,9 @@ export function catalogFilesUrl(query: CatalogFilesQuery = {}, base = apiBase())
 	}
 	if (query.prefix) {
 		url.searchParams.set('prefix', query.prefix);
+	}
+	if (query.q) {
+		url.searchParams.set('q', query.q);
 	}
 	if (query.sort && query.sort !== 'path') {
 		url.searchParams.set('sort', query.sort);

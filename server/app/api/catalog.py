@@ -9,6 +9,7 @@ from app.indexer.scan import scan_library
 
 MAX_PAGE_SIZE = 200
 DEFAULT_PAGE_SIZE = 50
+MAX_QUERY_LENGTH = 200
 
 router = APIRouter()
 
@@ -70,11 +71,12 @@ def list_entries(request: Request, path: str | None = Query(default=None)) -> Li
 
 
 @router.get("/catalog/files", response_model=FilesResponse)
-def list_files(
+def list_files(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     request: Request,
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
     offset: int = Query(default=0),
     prefix: str | None = Query(default=None),
+    q: str | None = Query(default=None),
     sort: str = Query(default="path"),
 ) -> FilesResponse:
     if not 1 <= limit <= MAX_PAGE_SIZE:
@@ -83,12 +85,15 @@ def list_files(
         raise HTTPException(status_code=400, detail="offset must be >= 0")
     if sort not in FILE_SORTS:
         raise HTTPException(status_code=400, detail="invalid sort")
+    query = (q or "").strip()
+    if len(query) > MAX_QUERY_LENGTH:
+        raise HTTPException(status_code=400, detail="q must be at most 200 characters")
     try:
         folder = parse_folder_path(prefix)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     page = app_context(request).store.list_files(
-        offset=offset, limit=limit, prefix=folder, sort=sort
+        offset=offset, limit=limit, prefix=folder, query=query, sort=sort
     )
     return FilesResponse(
         items=[_file_response(record) for record in page.items],

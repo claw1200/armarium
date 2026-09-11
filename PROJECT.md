@@ -47,7 +47,7 @@ armarium/
 
 The SvelteKit UI is the desktop frontend and, later, the optional website. Native work stays in `src-tauri`. No shared package until the API contract needs one (OpenAPI from FastAPI is enough).
 
-Indexer: periodic scan first; live watch later. Rescans skip files whose size and mtime still match the catalog. Waveforms and heavy analysis are on-demand, not a full-library import. The catalog API is `POST /catalog/scan`, `GET /catalog/entries?path=` (folder children), and `GET /catalog/files` (flat list with `limit`/`offset`/`prefix`/`sort`). Audio is `GET /audio/{path}` (the catalog id is the file’s relative path) with HTTP range requests; bytes are read from disk. Folders are derived from indexed file paths. The Svelte UI pages that file list and previews via the range URL. CORS allows configured UI origins (default: the Vite dev server). Tauri downloads a complete file to `~/Armarium/cache/{server relative path}` and only that cached file can be dragged into a DAW.
+Indexer: periodic scan first; live watch later. Rescans skip files whose size and mtime still match the catalog. Waveforms and heavy analysis are on-demand, not a full-library import. The catalog API is `POST /catalog/scan`, `GET /catalog/entries?path=` (folder children), and `GET /catalog/files` (flat list with `limit`/`offset`/`prefix`/`sort`/`q`). `q` is a case-insensitive substring match on the file’s relative path. Audio is `GET /audio/{path}` (the catalog id is the file’s relative path) with HTTP range requests; bytes are read from disk. Folders are derived from indexed file paths. The Svelte UI pages that file list and previews via the range URL. CORS allows configured UI origins (default: the Vite dev server). Tauri downloads a complete file to `~/Armarium/cache/{server relative path}` and only that cached file can be dragged into a DAW.
 
 ## Quality
 
@@ -68,6 +68,6 @@ Coverage is a tripwire early (do not let it drop) — not a score to maximise la
 5. **Cached download** — Tauri writes `{cacheRoot}/{serverRelativePath}/{filename}`.
 6. **Use in project** — drag the cached file only; download first if missing.
 
-**Next** — filename search, on-demand waveforms, simple cache management, browse-only web UI, live reindex, client-side hash dedup.
+**Next** — on-demand waveforms, simple cache management, browse-only web UI, live reindex, client-side hash dedup.
 
 **Later / ideas** — tags and collections, BPM/key, similarity, cache size caps, multi-user, mobile, internet access. Not in scope until the drag-to-DAW loop works.

@@ -82,18 +82,23 @@ class CatalogStore:
         ]
         return CatalogListing(path=folder, folders=folders, files=files)
 
-    def list_files(
+    def list_files(  # pylint: disable=too-many-arguments
         self,
         *,
         offset: int,
         limit: int,
         prefix: str = "",
+        query: str = "",
         sort: str = "path",
     ) -> FilePage:
         order = _SORT_COLUMNS.get(sort)
         if order is None:
             raise ValueError("invalid sort")
-        filters = (_files_under(prefix),) if prefix else ()
+        filters: tuple[ColumnElement[bool], ...] = ()
+        if prefix:
+            filters += (_files_under(prefix),)
+        if query:
+            filters += (_path_matches(query),)
         with self._session() as session:
             total = (
                 session.scalar(select(count()).select_from(FileRecord).where(*filters)) or 0
@@ -146,6 +151,10 @@ def _files_under(prefix: str) -> ColumnElement[bool]:
         FileRecord.parent_path == prefix,
         FileRecord.parent_path.startswith(f"{prefix}/", autoescape=True),
     )
+
+
+def _path_matches(query: str) -> ColumnElement[bool]:
+    return FileRecord.relative_path.contains(query, autoescape=True)
 
 
 def _configure_sqlite(dbapi_connection: Connection, _connection_record: object) -> None:

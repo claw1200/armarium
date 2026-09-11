@@ -210,6 +210,16 @@ def test_list_files_pages_and_filters_by_prefix(tmp_path: Path) -> None:
 
     escaped = store.list_files(offset=0, limit=50, prefix="A_")
     assert [item.relative_path for item in escaped.items] == ["A_/Other/wild.wav"]
+
+    kicks = store.list_files(offset=0, limit=50, query="kick")
+    assert [item.relative_path for item in kicks.items] == ["Drums/Kicks/kick.wav"]
+    drums = store.list_files(offset=0, limit=50, query="DRUMS")
+    assert [item.relative_path for item in drums.items] == [
+        "Drums/Kicks/kick.wav",
+        "Drums/Snares/snare.wav",
+    ]
+    wildcard = store.list_files(offset=0, limit=50, query="A_")
+    assert [item.relative_path for item in wildcard.items] == ["A_/Other/wild.wav"]
     store.close()
 
 

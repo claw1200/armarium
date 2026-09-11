@@ -14,10 +14,11 @@
 	import SamplePager from '$lib/components/SamplePager.svelte';
 	import SamplePlayer from '$lib/components/SamplePlayer.svelte';
 	import { toErrorMessage } from '$lib/error';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import type { PageProps } from './$types';
 
 	const dragThresholdPx = 6;
+	const searchDebounceMs = 300;
 
 	let { data }: PageProps = $props();
 	let selectedPath = $state<string | null>(null);
@@ -29,7 +30,7 @@
 	let duration = $state(Number.NaN);
 	let volume = $state(1);
 	let looped = $state(false);
-	let search = $state('');
+	let searchTimer: ReturnType<typeof setTimeout> | undefined;
 	let downloadGen = 0;
 	let cachedListGen = 0;
 	let pendingDrag: { path: string; x: number; y: number } | null = null;
@@ -79,11 +80,35 @@
 		}
 	});
 
-	function filesHref(targetOffset: number): '/' | `/?${string}` {
-		if (targetOffset <= 0) {
-			return '/';
+	function filesHref(targetOffset: number, query = data.q): '/' | `/?${string}` {
+		const params = new SvelteURLSearchParams();
+		const trimmed = query.trim();
+		if (trimmed) {
+			params.set('q', trimmed);
 		}
-		return `/?offset=${targetOffset}`;
+		if (targetOffset > 0) {
+			params.set('offset', String(targetOffset));
+		}
+		const encoded = params.toString();
+		return encoded ? `/?${encoded}` : '/';
+	}
+
+	function applySearch(raw: string): void {
+		const next = raw.trim();
+		if (next === data.q && offset === 0) {
+			return;
+		}
+		void goto(resolve(filesHref(0, next)), { keepFocus: true, noScroll: true, replaceState: true });
+	}
+
+	function onSearchInput(raw: string): void {
+		clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => applySearch(raw), searchDebounceMs);
+	}
+
+	function onSearchSubmit(raw: string): void {
+		clearTimeout(searchTimer);
+		applySearch(raw);
 	}
 
 	function isTypingTarget(target: EventTarget | null): boolean {
@@ -247,7 +272,7 @@
 	onpointercancel={clearPendingDrag}
 />
 
-<LibraryShell bind:search {loading}>
+<LibraryShell q={data.q} {loading} onquery={onSearchInput} onsearch={onSearchSubmit}>
 	<main class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
 		{#if data.loadError}
 			<div role="alert" class="alert alert-error">{data.loadError}</div>

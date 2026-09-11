@@ -5,12 +5,16 @@
 	import SearchBar from './SearchBar.svelte';
 
 	let {
-		search = $bindable(''),
+		q = '',
 		loading = false,
+		onquery,
+		onsearch,
 		children
 	}: {
-		search?: string;
+		q?: string;
 		loading?: boolean;
+		onquery?: (q: string) => void;
+		onsearch?: (q: string) => void;
 		children: Snippet;
 	} = $props();
 </script>
@@ -25,7 +29,7 @@
 				</label>
 			</div>
 			<div class="navbar-center min-w-0 flex-1">
-				<SearchBar bind:value={search} {loading} />
+				<SearchBar value={q} {loading} {onquery} {onsearch} />
 			</div>
 			<div class="navbar-end w-auto shrink-0">
 				<span class="hidden items-center gap-1 text-xs opacity-70 sm:flex">

@@ -45,9 +45,9 @@ test('files url omits default pagination', () => {
 	expect(catalogFilesUrl({}, BASE)).toBe('http://127.0.0.1:8000/catalog/files');
 });
 
-test('files url includes offset, prefix, and sort', () => {
-	expect(catalogFilesUrl({ offset: 50, prefix: 'Drums', sort: 'name' }, BASE)).toBe(
-		'http://127.0.0.1:8000/catalog/files?offset=50&prefix=Drums&sort=name'
+test('files url includes offset, prefix, query, and sort', () => {
+	expect(catalogFilesUrl({ offset: 50, prefix: 'Drums', q: 'kick', sort: 'name' }, BASE)).toBe(
+		'http://127.0.0.1:8000/catalog/files?offset=50&prefix=Drums&q=kick&sort=name'
 	);
 });
 
