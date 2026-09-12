@@ -1,5 +1,11 @@
 <script lang="ts">
-	let { onstopGesture }: { onstopGesture: (event: Event) => void } = $props();
+	let {
+		onstopGesture,
+		onshowInFinder
+	}: {
+		onstopGesture: (event: Event) => void;
+		onshowInFinder: () => void;
+	} = $props();
 
 	const popoverId = `sample-actions-${crypto.randomUUID()}`;
 	const anchorName = `--${popoverId}`;
@@ -8,6 +14,11 @@
 		onstopGesture(event);
 		const popover = event.currentTarget instanceof Element ? event.currentTarget.closest('[popover]') : null;
 		if (popover instanceof HTMLElement) popover.hidePopover();
+	}
+
+	function showInFinder(event: Event): void {
+		runAction(event);
+		onshowInFinder();
 	}
 
 	function positionIfUnanchored(node: HTMLElement) {
@@ -57,6 +68,6 @@
 		<button type="button" onpointerdown={onstopGesture} onclick={runAction}>Delete</button>
 	</li>
 	<li>
-		<button type="button" onpointerdown={onstopGesture} onclick={runAction}>Show in folder</button>
+		<button type="button" onpointerdown={onstopGesture} onclick={showInFinder}>Show in Finder</button>
 	</li>
 </ul>

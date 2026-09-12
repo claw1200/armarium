@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { cacheSample, listCached, listCachedFiles, startCachedDrag } from './cache';
+import { cacheSample, listCached, listCachedFiles, revealLibrary, startCachedDrag } from './cache';
 import { desktopOnlyMessage } from './error';
 
 test('cacheSample refuses the browser', async () => {
@@ -16,4 +16,8 @@ test('listCachedFiles is empty outside Tauri', async () => {
 
 test('startCachedDrag refuses the browser', async () => {
 	await expect(startCachedDrag('Drums/Kicks/kick.wav')).rejects.toThrow(desktopOnlyMessage);
+});
+
+test('revealLibrary refuses the browser', async () => {
+	await expect(revealLibrary('Drums/Kicks/kick.wav')).rejects.toThrow(desktopOnlyMessage);
 });

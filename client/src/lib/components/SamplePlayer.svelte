@@ -32,7 +32,6 @@
 	let seekMax = $derived(seekable ? duration : 0);
 	let progressMax = $derived(seekable ? duration : 1);
 	let progressValue = $derived(seekable ? currentTime : 0);
-	let folderLabel = $derived(sample.parent_path.split('/').filter(Boolean).join(' ') || 'Library');
 </script>
 
 <footer
@@ -77,10 +76,9 @@
 		</IconButton>
 
 		<div class="min-w-0 flex-1">
-			<p class="truncate text-sm font-semibold">{title}</p>
-			<p class="truncate text-xs opacity-50">
-				{folderLabel}
-				<span class="badge badge-ghost badge-xs ms-1">{formatAudioFormat(sample.format)}</span>
+			<p class="flex min-w-0 items-center gap-1">
+				<span class="truncate text-sm font-semibold">{title}</span>
+				<span class="badge badge-ghost badge-xs shrink-0">{formatAudioFormat(sample.format)}</span>
 			</p>
 		</div>
 

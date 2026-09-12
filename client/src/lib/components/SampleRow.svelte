@@ -15,6 +15,7 @@
 		onpreview,
 		ontogglePlay,
 		ondownload,
+		onshowInFinder,
 		onpointerdown,
 		onstopGesture
 	}: {
@@ -27,6 +28,7 @@
 		onpreview: (file: CatalogFile) => void;
 		ontogglePlay: (file: CatalogFile) => void;
 		ondownload: (file: CatalogFile) => void;
+		onshowInFinder: (file: CatalogFile) => void;
 		onpointerdown: (event: PointerEvent, file: CatalogFile) => void;
 		onstopGesture: (event: Event) => void;
 	} = $props();
@@ -86,7 +88,6 @@
 		<div class="flex min-w-0 flex-col gap-1">
 			<span class="truncate font-medium">{title}</span>
 			<span class="flex min-w-0 flex-wrap items-center gap-1">
-				<span class="truncate text-xs opacity-60">{file.parent_path || 'Library'}</span>
 				<span class="badge badge-ghost badge-xs shrink-0">{formatAudioFormat(file.format)}</span>
 				{#each tags as tag (tag)}
 					<span class="badge badge-ghost badge-xs shrink-0">{tag}</span>
@@ -129,7 +130,7 @@
 					{/if}
 				</IconButton>
 			{/if}
-			<OverflowMenu {onstopGesture} />
+			<OverflowMenu {onstopGesture} onshowInFinder={() => onshowInFinder(file)} />
 		</div>
 	</td>
 </tr>

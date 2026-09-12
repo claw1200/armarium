@@ -13,6 +13,7 @@
 		onpreview,
 		ontogglePlay,
 		ondownload,
+		onshowInFinder,
 		onpointerdown,
 		onstopGesture
 	}: {
@@ -25,6 +26,7 @@
 		onpreview: (file: CatalogFile) => void;
 		ontogglePlay: (file: CatalogFile) => void;
 		ondownload: (file: CatalogFile) => void;
+		onshowInFinder: (file: CatalogFile) => void;
 		onpointerdown: (event: PointerEvent, file: CatalogFile) => void;
 		onstopGesture: (event: Event) => void;
 	} = $props();
@@ -60,6 +62,7 @@
 						{onpreview}
 						{ontogglePlay}
 						{ondownload}
+						{onshowInFinder}
 						{onpointerdown}
 						{onstopGesture}
 					/>

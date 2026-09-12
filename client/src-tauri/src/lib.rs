@@ -3,6 +3,7 @@ use tauri::Manager;
 mod cache;
 mod file_drag;
 mod fixture;
+mod library;
 
 #[tauri::command]
 fn fixture_sample(app: tauri::AppHandle) -> Result<fixture::FixtureSample, String> {
@@ -74,6 +75,14 @@ fn list_cached(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     Ok(cache::list_cached_relatives(&root))
 }
 
+#[tauri::command]
+fn reveal_library(app: tauri::AppHandle, relative_path: String) -> Result<(), String> {
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    let root = library::library_root(&home, std::env::var_os("ARMARIUM_LIBRARY").as_deref());
+    let dest = library::library_file(&root, &relative_path).map_err(|error| error.to_string())?;
+    library::reveal_in_file_manager(&dest).map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -83,7 +92,8 @@ pub fn run() {
             cache_sample,
             start_cached_drag,
             cached_paths,
-            list_cached
+            list_cached,
+            reveal_library
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

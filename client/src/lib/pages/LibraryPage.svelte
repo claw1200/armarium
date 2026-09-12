@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { navigating } from '$app/state';
 	import { audioUrl, fetchFiles, type CatalogFile, type CatalogPage } from '$lib/api';
-	import { cacheSample, listCached, startCachedDrag } from '$lib/cache';
+	import { cacheSample, listCached, revealLibrary, startCachedDrag } from '$lib/cache';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
@@ -318,6 +318,15 @@
 		}
 	}
 
+	async function showInFinder(file: CatalogFile): Promise<void> {
+		try {
+			await revealLibrary(file.path);
+			cacheError = null;
+		} catch (error) {
+			cacheError = toErrorMessage(error);
+		}
+	}
+
 	async function beginCachedDrag(path: string): Promise<void> {
 		try {
 			const result = await startCachedDrag(path);
@@ -516,6 +525,7 @@
 						onpreview={onRowPreview}
 						ontogglePlay={togglePlay}
 						ondownload={downloadFile}
+						onshowInFinder={(file) => void showInFinder(file)}
 						onpointerdown={onRowPointerDown}
 						onstopGesture={stopRowGesture}
 					/>

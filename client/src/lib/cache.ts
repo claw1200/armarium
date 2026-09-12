@@ -33,3 +33,10 @@ export async function startCachedDrag(relativePath: string): Promise<CachedDrag>
 	}
 	return invoke<CachedDrag>('start_cached_drag', { relativePath });
 }
+
+export async function revealLibrary(relativePath: string): Promise<void> {
+	if (!isTauri()) {
+		throw new Error(desktopOnlyMessage);
+	}
+	return invoke<void>('reveal_library', { relativePath });
+}
