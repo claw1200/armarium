@@ -4,7 +4,7 @@
 	let {
 		label,
 		tip = label,
-		active = false,
+		active,
 		disabled = false,
 		onclick,
 		onpointerdown,
@@ -23,8 +23,9 @@
 <div class="tooltip" data-tip={tip}>
 	<button
 		type="button"
-		class={['btn btn-ghost btn-square btn-xs', active && 'btn-active']}
+		class={['btn btn-ghost btn-square btn-xs', active && 'text-primary']}
 		aria-label={label}
+		aria-pressed={active}
 		{disabled}
 		{onclick}
 		{onpointerdown}

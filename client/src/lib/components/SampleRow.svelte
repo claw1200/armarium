@@ -70,7 +70,7 @@
 	onclick={() => onpreview(file)}
 	onkeydown={onRowKeydown}
 >
-	<td class="w-8">
+	<td class="w-10">
 		<div class="tooltip" data-tip={playLabel}>
 			<button
 				type="button"
@@ -84,7 +84,7 @@
 			</button>
 		</div>
 	</td>
-	<td class="w-full max-w-0">
+	<td class="min-w-0">
 		<div class="flex min-w-0 flex-col gap-1">
 			<span class="truncate font-medium">{title}</span>
 			<span class="flex min-w-0 items-center gap-1">
@@ -93,7 +93,7 @@
 			</span>
 		</div>
 	</td>
-	<td class="w-36 min-w-20">
+	<td class="min-w-0">
 		<Waveform seed={file.path} />
 	</td>
 	<td class="whitespace-nowrap tabular-nums opacity-70">{formatDuration(file.duration_seconds)}</td>

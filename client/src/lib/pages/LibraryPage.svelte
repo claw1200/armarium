@@ -1,31 +1,31 @@
-<script module lang="ts">
-	let pendingSelect: 'first' | 'last' | null = null;
-</script>
-
 <script lang="ts">
 	import { afterNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { navigating } from '$app/state';
-	import { audioUrl, DEFAULT_PAGE_SIZE, type CatalogFile, type CatalogPage } from '$lib/api';
+	import { audioUrl, fetchFiles, type CatalogFile, type CatalogPage } from '$lib/api';
 	import { cacheSample, listCached, startCachedDrag } from '$lib/cache';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import ErrorBanner from '$lib/components/ErrorBanner.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import LibraryShell from '$lib/components/LibraryShell.svelte';
 	import SampleList from '$lib/components/SampleList.svelte';
-	import SamplePager from '$lib/components/SamplePager.svelte';
 	import SamplePlayer from '$lib/components/SamplePlayer.svelte';
 	import { toErrorMessage } from '$lib/error';
+	import type { Attachment } from 'svelte/attachments';
 	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 
 	const dragThresholdPx = 6;
 	const searchDebounceMs = 300;
+	const loadMoreMarginPx = 240;
 
 	let { data }: { data: { catalog: CatalogPage | null; q: string; loadError: string | null } } =
 		$props();
 	let selectedPath = $state<string | null>(null);
 	let cached = new SvelteSet<string>();
 	let cacheError = $state<string | null>(null);
+	let moreError = $state<string | null>(null);
+	let extraItems = $state.raw<CatalogFile[]>([]);
+	let loadingMore = $state(false);
 	let downloadingPath = $state<string | null>(null);
 	let paused = $state(true);
 	let currentTime = $state(0);
@@ -33,22 +33,19 @@
 	let volume = $state(1);
 	let looped = $state(false);
 	let searchTimer: ReturnType<typeof setTimeout> | undefined;
+	let listScroller: HTMLDivElement | null = null;
 	let downloadGen = 0;
 	let cachedListGen = 0;
+	let moreGen = 0;
 	let pendingDrag: { path: string; x: number; y: number } | null = null;
 	let skipRowClick = false;
 
 	let catalog = $derived(data.catalog);
-	let items = $derived(catalog?.items ?? []);
+	let items = $derived([...(catalog?.items ?? []), ...extraItems]);
 	let total = $derived(catalog?.total ?? 0);
-	let limit = $derived(catalog?.limit ?? DEFAULT_PAGE_SIZE);
-	let offset = $derived(catalog?.offset ?? 0);
 	let selected = $derived(items.find((file) => file.path === selectedPath) ?? null);
 	let loading = $derived(navigating.to !== null);
-	let pageCount = $derived(Math.max(1, Math.ceil(total / limit)));
-	let pageNumber = $derived(Math.min(pageCount, Math.floor(offset / limit) + 1));
-	let previousOffset = $derived(Math.max(0, offset - limit));
-	let nextOffset = $derived(offset + limit);
+	let hasMore = $derived(items.length < total);
 	let playing = $derived(!paused);
 	let playingPath = $derived(playing ? selectedPath : null);
 	let resultLabel = $derived(
@@ -56,52 +53,33 @@
 	);
 
 	afterNavigate(() => {
-		const gen = ++cachedListGen;
-		const paths = items.map((file) => file.path);
-		void listCached(paths)
-			.then((hits) => {
-				if (gen !== cachedListGen) {
-					return;
-				}
-				cached.clear();
-				for (const hit of hits) {
-					cached.add(hit);
-				}
-			})
-			.catch(() => {
-				if (gen === cachedListGen) {
-					cached.clear();
-				}
-			});
-		if (pendingSelect === null) {
-			return;
-		}
-		const file = pendingSelect === 'first' ? items[0] : items.at(-1);
-		pendingSelect = null;
-		if (file) {
-			previewFile(file);
-		}
+		listScroller?.scrollTo(0, 0);
+		moreGen += 1;
+		extraItems = [];
+		loadingMore = false;
+		moreError = null;
+		void refreshCached(
+			(data.catalog?.items ?? []).map((file) => file.path),
+			true
+		);
 	});
 
-	function filesHref(targetOffset: number, query = data.q): '/' | `/?${string}` {
-		const params = new SvelteURLSearchParams();
+	function filesHref(query = data.q): '/' | `/?${string}` {
 		const trimmed = query.trim();
-		if (trimmed) {
-			params.set('q', trimmed);
+		if (!trimmed) {
+			return '/';
 		}
-		if (targetOffset > 0) {
-			params.set('offset', String(targetOffset));
-		}
-		const encoded = params.toString();
-		return encoded ? `/?${encoded}` : '/';
+		const params = new SvelteURLSearchParams();
+		params.set('q', trimmed);
+		return `/?${params.toString()}`;
 	}
 
 	function applySearch(raw: string): void {
 		const next = raw.trim();
-		if (next === data.q && offset === 0) {
+		if (next === data.q) {
 			return;
 		}
-		void goto(resolve(filesHref(0, next)), { keepFocus: true, noScroll: true, replaceState: true });
+		void goto(resolve(filesHref(next)), { keepFocus: true, noScroll: true, replaceState: true });
 	}
 
 	function onSearchInput(raw: string): void {
@@ -120,6 +98,27 @@
 		}
 		const tag = target.tagName;
 		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+	}
+
+	function refreshCached(paths: string[], replace: boolean): Promise<void> {
+		const gen = ++cachedListGen;
+		return listCached(paths)
+			.then((hits) => {
+				if (gen !== cachedListGen) {
+					return;
+				}
+				if (replace) {
+					cached.clear();
+				}
+				for (const hit of hits) {
+					cached.add(hit);
+				}
+			})
+			.catch(() => {
+				if (gen === cachedListGen && replace) {
+					cached.clear();
+				}
+			});
 	}
 
 	function markCached(path: string): void {
@@ -239,31 +238,99 @@
 		}
 	}
 
-	function skipSample(delta: -1 | 1): void {
+	function sentinelVisible(node: HTMLElement): boolean {
+		const root = node.parentElement;
+		if (!root) {
+			return false;
+		}
+		return node.getBoundingClientRect().top < root.getBoundingClientRect().bottom + loadMoreMarginPx;
+	}
+
+	async function loadMore(): Promise<boolean> {
+		if (loadingMore || !catalog || items.length >= catalog.total) {
+			return false;
+		}
+		const gen = moreGen;
+		const offset = items.length;
+		loadingMore = true;
+		moreError = null;
+		try {
+			const page = await fetchFiles({
+				offset,
+				limit: catalog.limit,
+				q: data.q || undefined
+			});
+			if (gen !== moreGen) {
+				return false;
+			}
+			if (page.items.length === 0) {
+				return false;
+			}
+			extraItems = [...extraItems, ...page.items];
+			void refreshCached(
+				page.items.map((file) => file.path),
+				false
+			);
+			return true;
+		} catch (error) {
+			if (gen === moreGen) {
+				moreError = toErrorMessage(error);
+			}
+			return false;
+		} finally {
+			if (gen === moreGen) {
+				loadingMore = false;
+			}
+		}
+	}
+
+	const bindScroller: Attachment<HTMLDivElement> = (node) => {
+		listScroller = node;
+		return () => {
+			if (listScroller === node) {
+				listScroller = null;
+			}
+		};
+	};
+
+	const watchVisible: Attachment<HTMLElement> = (node) => {
+		const root = node.parentElement;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (!entries.some((entry) => entry.isIntersecting)) {
+					return;
+				}
+				void loadMore().then((loaded) => {
+					if (loaded && sentinelVisible(node)) {
+						void loadMore();
+					}
+				});
+			},
+			{ root, rootMargin: `${loadMoreMarginPx}px` }
+		);
+		observer.observe(node);
+		return () => observer.disconnect();
+	};
+
+	async function skipSample(delta: -1 | 1): Promise<void> {
 		if (items.length === 0) {
 			return;
 		}
 		const index = items.findIndex((file) => file.path === selectedPath);
 		if (delta > 0) {
-			const nextFile = index < 0 ? items[0] : items[index + 1];
-			if (nextFile) {
-				previewFile(nextFile);
-				return;
+			const nextIndex = index < 0 ? 0 : index + 1;
+			if (nextIndex >= items.length && hasMore) {
+				await loadMore();
 			}
-			if (nextOffset < total) {
-				pendingSelect = 'first';
-				void goto(resolve(filesHref(nextOffset)), { keepFocus: true, noScroll: true });
+			const nextFile = items[nextIndex];
+			if (nextFile !== undefined) {
+				previewFile(nextFile);
 			}
 			return;
 		}
 		const previousFile = index < 0 ? items.at(-1) : items[index - 1];
 		if (previousFile) {
 			previewFile(previousFile);
-			return;
-		}
-		if (offset > 0) {
-			pendingSelect = 'last';
-			void goto(resolve(filesHref(previousOffset)), { keepFocus: true, noScroll: true });
 		}
 	}
 
@@ -275,7 +342,7 @@
 			return;
 		}
 		event.preventDefault();
-		skipSample(event.key === 'ArrowDown' ? 1 : -1);
+		void skipSample(event.key === 'ArrowDown' ? 1 : -1);
 	}
 </script>
 
@@ -298,6 +365,9 @@
 		{#if cacheError}
 			<ErrorBanner kind="error" text={cacheError} onDismiss={() => (cacheError = null)} />
 		{/if}
+		{#if moreError}
+			<ErrorBanner kind="error" text={moreError} onDismiss={() => (moreError = null)} />
+		{/if}
 
 		{#if catalog}
 			<FilterBar {resultLabel} />
@@ -319,7 +389,7 @@
 					</div>
 				{/if}
 			{:else}
-				<div class="min-h-0 flex-1 overflow-y-auto">
+				<div class="min-h-0 flex-1 overflow-y-auto" {@attach bindScroller}>
 					<SampleList
 						{items}
 						{selectedPath}
@@ -332,19 +402,16 @@
 						onpointerdown={onRowPointerDown}
 						onstopGesture={stopRowGesture}
 					/>
+					{#if hasMore}
+						<div class="flex justify-center py-4" {@attach watchVisible}>
+							<span
+								class={['loading loading-spinner', !loadingMore && 'invisible']}
+								aria-hidden={!loadingMore}
+								aria-label="Loading more samples"
+							></span>
+						</div>
+					{/if}
 				</div>
-				{#if total > limit || offset > 0}
-					<div class="border-t border-base-300 px-3 py-2">
-						<SamplePager
-							{pageNumber}
-							{pageCount}
-							previousHref={filesHref(previousOffset)}
-							nextHref={filesHref(nextOffset)}
-							hasPrevious={offset > 0}
-							hasNext={nextOffset < total}
-						/>
-					</div>
-				{/if}
 			{/if}
 		</div>
 	</main>
@@ -358,8 +425,8 @@
 				bind:volume
 				bind:looped
 				onplaypause={() => togglePlay(selected)}
-				onprev={() => skipSample(-1)}
-				onnext={() => skipSample(1)}
+				onprev={() => void skipSample(-1)}
+				onnext={() => void skipSample(1)}
 			/>
 		{/if}
 	{/snippet}

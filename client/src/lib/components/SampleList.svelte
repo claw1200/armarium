@@ -34,16 +34,16 @@
 	<EmptyState text="No samples in the library." />
 {:else}
 	<div class="overflow-x-auto">
-		<table class="table table-pin-rows table-xs">
+		<table class="table table-pin-rows table-xs table-fixed w-full">
 			<thead>
 				<tr>
-					<th></th>
-					<th>Filename</th>
-					<th>Waveform</th>
-					<th>Time</th>
-					<th>Key</th>
-					<th>BPM</th>
-					<th></th>
+					<th class="w-10"></th>
+					<th class="min-w-32">Filename</th>
+					<th class="min-w-32">Waveform</th>
+					<th class="w-16">Time</th>
+					<th class="w-14">Key</th>
+					<th class="w-14">BPM</th>
+					<th class="w-32"></th>
 				</tr>
 			</thead>
 			<tbody>

@@ -3,7 +3,7 @@
 @plugin '@iconify/tailwind4';
 
 @plugin 'daisyui' {
-	themes: 'armarium-light' --default 'armarium-dark' --prefersdark;
+	themes: all;
 }
 
 @plugin 'daisyui/theme' {
@@ -79,6 +79,13 @@
 :root {
 	-webkit-user-select: none;
 	user-select: none;
+}
+
+.btn-ghost:focus-visible:not(:hover) {
+	--btn-bg: transparent;
+	--btn-border: transparent;
+	--btn-shadow: 0 0 0 0 transparent;
+	--btn-inset: 0 0 0 0 transparent;
 }
 
 input,

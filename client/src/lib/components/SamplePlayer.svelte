@@ -75,12 +75,6 @@
 			</IconButton>
 		</div>
 
-		<div class="avatar avatar-placeholder shrink-0">
-			<div class="w-8 rounded-sm bg-base-200">
-				<span class="icon-[lucide--music] size-4 opacity-60" aria-hidden="true"></span>
-			</div>
-		</div>
-
 		<IconButton
 			label="Loop"
 			tip={looped ? 'Loop on' : 'Loop off'}
