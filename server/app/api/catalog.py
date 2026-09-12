@@ -2,9 +2,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.context import app_context
-from app.catalog.models import FileRecord, FolderEntry
+from app.catalog.models import FileMeta, FileRecord, FolderEntry
 from app.catalog.paths import parse_folder_path
-from app.catalog.store import FILE_SORTS
+from app.catalog.store import FILE_SORTS, CatalogStore
 from app.indexer.scan import scan_library
 
 MAX_PAGE_SIZE = 200
@@ -32,6 +32,8 @@ class FileResponse(BaseModel):
     duration_seconds: float | None
     sample_rate: int | None
     channels: int | None
+    bpm: float | None
+    key: str | None
 
 
 class ListingResponse(BaseModel):
@@ -62,11 +64,12 @@ def list_entries(request: Request, path: str | None = Query(default=None)) -> Li
         folder = parse_folder_path(path)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    listing = app_context(request).store.list_folder(folder)
+    ctx = app_context(request)
+    listing = ctx.store.list_folder(folder)
     return ListingResponse(
         path=listing.path,
         folders=[_folder_response(entry) for entry in listing.folders],
-        files=[_file_response(record) for record in listing.files],
+        files=_file_responses(ctx.store, listing.files),
     )
 
 
@@ -92,11 +95,12 @@ def list_files(  # pylint: disable=too-many-arguments,too-many-positional-argume
         folder = parse_folder_path(prefix)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    page = app_context(request).store.list_files(
+    ctx = app_context(request)
+    page = ctx.store.list_files(
         offset=offset, limit=limit, prefix=folder, query=query, sort=sort
     )
     return FilesResponse(
-        items=[_file_response(record) for record in page.items],
+        items=_file_responses(ctx.store, page.items),
         total=page.total,
         limit=page.limit,
         offset=page.offset,
@@ -107,7 +111,12 @@ def _folder_response(entry: FolderEntry) -> FolderResponse:
     return FolderResponse(name=entry.name, path=entry.path)
 
 
-def _file_response(record: FileRecord) -> FileResponse:
+def _file_responses(store: CatalogStore, records: list[FileRecord]) -> list[FileResponse]:
+    meta = store.meta_by_paths([record.relative_path for record in records])
+    return [_file_response(record, meta.get(record.relative_path)) for record in records]
+
+
+def _file_response(record: FileRecord, meta: FileMeta | None) -> FileResponse:
     return FileResponse(
         name=record.name,
         path=record.relative_path,
@@ -117,4 +126,6 @@ def _file_response(record: FileRecord) -> FileResponse:
         duration_seconds=record.duration_seconds,
         sample_rate=record.sample_rate,
         channels=record.channels,
+        bpm=meta.bpm if meta is not None else None,
+        key=meta.key if meta is not None else None,
     )

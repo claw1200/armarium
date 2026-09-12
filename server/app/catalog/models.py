@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass
 
+from sqlalchemy import ForeignKey, Index, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedAsDataclass, mapped_column
 
 
@@ -22,6 +23,34 @@ class FileRecord(MappedAsDataclass, Base):
 
     def detached(self) -> "FileRecord":
         return FileRecord(**asdict(self))
+
+
+class FileMeta(MappedAsDataclass, Base):
+    __tablename__ = "file_meta"
+
+    relative_path: Mapped[str] = mapped_column(
+        ForeignKey("files.relative_path", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    bpm_inferred: Mapped[float | None] = mapped_column(default=None)
+    bpm_user: Mapped[float | None] = mapped_column(default=None)
+    key_inferred: Mapped[str | None] = mapped_column(default=None)
+    key_user: Mapped[str | None] = mapped_column(default=None)
+
+    def detached(self) -> "FileMeta":
+        return FileMeta(**asdict(self))
+
+    @property
+    def bpm(self) -> float | None:
+        return self.bpm_user if self.bpm_user is not None else self.bpm_inferred
+
+    @property
+    def key(self) -> str | None:
+        return self.key_user if self.key_user is not None else self.key_inferred
+
+
+Index("file_meta_bpm", func.coalesce(FileMeta.bpm_user, FileMeta.bpm_inferred))
+Index("file_meta_key", func.coalesce(FileMeta.key_user, FileMeta.key_inferred))
 
 
 @dataclass(frozen=True, slots=True)

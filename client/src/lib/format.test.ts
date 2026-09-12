@@ -1,5 +1,16 @@
 import { expect, test } from 'vitest';
-import { fileStem, formatAudioFormat, formatDuration, formatSize } from './format';
+import { fileStem, formatAudioFormat, formatBpm, formatDuration, formatKey, formatSize } from './format';
+
+test('formatBpm shows a dash when missing', () => {
+	expect(formatBpm(null)).toBe('—');
+	expect(formatBpm(128)).toBe('128');
+	expect(formatBpm(87.5)).toBe('87.5');
+});
+
+test('formatKey shows a dash when missing', () => {
+	expect(formatKey(null)).toBe('—');
+	expect(formatKey('C#m')).toBe('C#m');
+});
 
 test('formatDuration uses minutes and seconds', () => {
 	expect(formatDuration(0.1)).toBe('0:01');

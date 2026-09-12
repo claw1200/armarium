@@ -14,6 +14,8 @@ export type CatalogFile = {
 	duration_seconds: number | null;
 	sample_rate: number | null;
 	channels: number | null;
+	bpm: number | null;
+	key: string | null;
 };
 
 export type CatalogListing = {

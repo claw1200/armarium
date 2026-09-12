@@ -7,6 +7,7 @@ from app.catalog.models import FileRecord
 from app.catalog.paths import file_name, is_audio_file, parent_path
 from app.catalog.store import CatalogStore
 from app.indexer.audio import read_audio_info
+from app.indexer.filename import parse_filename
 
 
 def iter_audio_files(library_root: Path) -> Iterator[Path]:
@@ -43,9 +44,15 @@ def scan_library(library_root: Path, store: CatalogStore) -> int:
         except (OSError, ValueError):
             continue
     delete_paths = [path for path in existing if path not in seen]
-    if not upserts and not delete_paths:
-        return len(existing)
-    return store.apply_scan(upserts, delete_paths)
+    if upserts or delete_paths:
+        file_count = store.apply_scan(upserts, delete_paths)
+    else:
+        file_count = len(existing)
+    removed = set(delete_paths)
+    alive = {path for path in existing if path not in removed}
+    alive.update(record.relative_path for record in upserts)
+    store.apply_inferred(_inferred_from_filename(path) for path in alive)
+    return file_count
 
 
 def _record_for(path: Path, relative: str, stats: os.stat_result) -> FileRecord:
@@ -61,3 +68,8 @@ def _record_for(path: Path, relative: str, stats: os.stat_result) -> FileRecord:
         sample_rate=audio.sample_rate,
         channels=audio.channels,
     )
+
+
+def _inferred_from_filename(relative: str) -> tuple[str, float | None, str | None]:
+    parsed = parse_filename(file_name(relative))
+    return relative, parsed.bpm, parsed.key

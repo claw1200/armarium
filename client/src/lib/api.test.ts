@@ -19,7 +19,9 @@ const kick = {
 	format: 'wav',
 	duration_seconds: 0.1,
 	sample_rate: 44100,
-	channels: 1
+	channels: 1,
+	bpm: 128,
+	key: 'Cm'
 };
 
 test('apiBase uses a configured origin', () => {

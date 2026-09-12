@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import type { CatalogFile } from '$lib/api';
-	import { fileStem, formatAudioFormat } from '$lib/format';
-	import { missingMeta } from '$lib/placeholders';
+	import { fileStem, formatAudioFormat, formatBpm, formatKey } from '$lib/format';
 	import IconButton from './IconButton.svelte';
 
 	let {
@@ -94,12 +93,12 @@
 
 		<div class="flex shrink-0 items-center self-stretch">
 			<div class="flex flex-col items-center justify-center px-2">
-				<span class="text-sm font-semibold leading-none">{missingMeta}</span>
+				<span class="text-sm font-semibold leading-none">{formatKey(sample.key)}</span>
 				<span class="mt-1 text-[0.625rem] font-medium tracking-wide uppercase opacity-50">Key</span>
 			</div>
 			<div class="divider divider-horizontal mx-0"></div>
 			<div class="flex flex-col items-center justify-center px-2">
-				<span class="text-sm font-semibold leading-none">{missingMeta}</span>
+				<span class="text-sm font-semibold leading-none tabular-nums">{formatBpm(sample.bpm)}</span>
 				<span class="mt-1 text-[0.625rem] font-medium tracking-wide uppercase opacity-50">Bpm</span>
 			</div>
 		</div>

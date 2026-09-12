@@ -234,3 +234,43 @@ def test_list_files_sorts_by_duration_then_path(tmp_path: Path) -> None:
     page = store.list_files(offset=0, limit=50, sort="duration")
     assert [item.name for item in page.items] == ["a.wav", "b.wav", "long.wav"]
     store.close()
+
+
+def test_scan_infers_bpm_and_key_from_the_filename(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Loop_128bpm_Cmin.wav")
+    write_sine_wav(library / "808_snare.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+    loop = store.get_meta("Loop_128bpm_Cmin.wav")
+    assert loop is not None
+    assert loop.bpm_inferred == 128
+    assert loop.key_inferred == "Cm"
+    assert loop.bpm_user is None
+    assert store.get_meta("808_snare.wav") is None
+    store.close()
+
+
+def test_rescan_refreshes_inferred_meta_without_opening_audio(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Loop_128bpm_Cmin.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+    store.set_user("Loop_128bpm_Cmin.wav", bpm=130, key="Dm")
+
+    def fail_read(_path: Path) -> None:
+        raise AssertionError("unchanged files must not be opened")
+
+    monkeypatch.setattr(scan_module, "read_audio_info", fail_read)
+    assert scan_library(library, store) == 1
+    meta = store.get_meta("Loop_128bpm_Cmin.wav")
+    assert meta is not None
+    assert meta.bpm_inferred == 128
+    assert meta.key_inferred == "Cm"
+    assert meta.bpm_user == 130
+    assert meta.key_user == "Dm"
+    store.close()

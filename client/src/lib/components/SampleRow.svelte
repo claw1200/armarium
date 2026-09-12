@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { CatalogFile } from '$lib/api';
-	import { fileStem, formatAudioFormat, formatDuration } from '$lib/format';
-	import { missingMeta } from '$lib/placeholders';
+	import { fileStem, formatAudioFormat, formatBpm, formatDuration, formatKey } from '$lib/format';
 	import IconButton from './IconButton.svelte';
 	import OverflowMenu from './OverflowMenu.svelte';
 	import Waveform from './Waveform.svelte';
@@ -97,8 +96,8 @@
 		<Waveform seed={file.path} />
 	</td>
 	<td class="whitespace-nowrap tabular-nums opacity-70">{formatDuration(file.duration_seconds)}</td>
-	<td class="whitespace-nowrap opacity-70">{missingMeta}</td>
-	<td class="whitespace-nowrap opacity-70">{missingMeta}</td>
+	<td class="whitespace-nowrap opacity-70">{formatKey(file.key)}</td>
+	<td class="whitespace-nowrap tabular-nums opacity-70">{formatBpm(file.bpm)}</td>
 	<td class="whitespace-nowrap">
 		<div class="flex items-center justify-end gap-2">
 			<IconButton label={likeLabel} active={liked} onpointerdown={onstopGesture} onclick={stopAndToggleLike}>

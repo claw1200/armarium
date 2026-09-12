@@ -9,6 +9,17 @@ export function formatDuration(seconds: number | null): string {
 	return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 
+export function formatBpm(bpm: number | null): string {
+	if (bpm === null || !Number.isFinite(bpm)) {
+		return '—';
+	}
+	return Number.isInteger(bpm) ? String(bpm) : bpm.toFixed(1);
+}
+
+export function formatKey(key: string | null): string {
+	return key ?? '—';
+}
+
 export function formatAudioFormat(format: string): string {
 	return format.toUpperCase();
 }
