@@ -21,7 +21,8 @@ const kick = {
 	sample_rate: 44100,
 	channels: 1,
 	bpm: 128,
-	key: 'Cm'
+	key: 'Cm',
+	tags: ['one-shot', 'kick']
 };
 
 test('apiBase uses a configured origin', () => {
@@ -50,6 +51,12 @@ test('files url omits default pagination', () => {
 test('files url includes offset, prefix, query, and sort', () => {
 	expect(catalogFilesUrl({ offset: 50, prefix: 'Drums', q: 'kick', sort: 'name' }, BASE)).toBe(
 		'http://127.0.0.1:8000/catalog/files?offset=50&prefix=Drums&q=kick&sort=name'
+	);
+});
+
+test('files url appends repeated tag filters', () => {
+	expect(catalogFilesUrl({ tags: ['kick', 'loop'] }, BASE)).toBe(
+		'http://127.0.0.1:8000/catalog/files?tag=kick&tag=loop'
 	);
 });
 

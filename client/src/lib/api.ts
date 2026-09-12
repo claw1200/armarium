@@ -16,6 +16,7 @@ export type CatalogFile = {
 	channels: number | null;
 	bpm: number | null;
 	key: string | null;
+	tags: string[];
 };
 
 export type CatalogListing = {
@@ -37,6 +38,7 @@ export type CatalogFilesQuery = {
 	prefix?: string;
 	q?: string;
 	sort?: 'path' | 'name' | 'duration';
+	tags?: string[];
 };
 
 export const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
@@ -76,6 +78,9 @@ export function catalogFilesUrl(query: CatalogFilesQuery = {}, base = apiBase())
 	}
 	if (query.sort && query.sort !== 'path') {
 		url.searchParams.set('sort', query.sort);
+	}
+	for (const tag of query.tags ?? []) {
+		url.searchParams.append('tag', tag);
 	}
 	return url.toString();
 }

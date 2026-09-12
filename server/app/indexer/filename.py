@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.catalog.meta import canonical_key, plausible_bpm
+from app.catalog.paths import file_name, parent_path
+from app.catalog.tags import TagHit, match_tags
 
 _DELIM = r"[ _()-]"
 _BPM = re.compile(
@@ -19,11 +21,24 @@ _KEY = re.compile(
 class FilenameMeta:
     bpm: float | None
     key: str | None
+    filename_tags: tuple[TagHit, ...]
+    path_tags: tuple[TagHit, ...]
 
 
 def parse_filename(name: str) -> FilenameMeta:
+    return parse_relative(name)
+
+
+def parse_relative(relative: str) -> FilenameMeta:
+    name = file_name(relative)
     stem = Path(name).stem
-    return FilenameMeta(bpm=_parse_bpm(stem), key=_parse_key(stem))
+    parent = parent_path(relative)
+    return FilenameMeta(
+        bpm=_parse_bpm(stem),
+        key=_parse_key(stem),
+        filename_tags=match_tags(stem, "filename"),
+        path_tags=match_tags(parent, "path") if parent else (),
+    )
 
 
 def _parse_bpm(stem: str) -> float | None:

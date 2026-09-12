@@ -36,6 +36,8 @@ class FileMeta(MappedAsDataclass, Base):
     bpm_user: Mapped[float | None] = mapped_column(default=None)
     key_inferred: Mapped[str | None] = mapped_column(default=None)
     key_user: Mapped[str | None] = mapped_column(default=None)
+    audio_is_loop: Mapped[bool | None] = mapped_column(default=None)
+    audio_bpm: Mapped[float | None] = mapped_column(default=None)
 
     def detached(self) -> "FileMeta":
         return FileMeta(**asdict(self))
@@ -51,6 +53,53 @@ class FileMeta(MappedAsDataclass, Base):
 
 Index("file_meta_bpm", func.coalesce(FileMeta.bpm_user, FileMeta.bpm_inferred))
 Index("file_meta_key", func.coalesce(FileMeta.key_user, FileMeta.key_inferred))
+
+
+class FileTagInferred(MappedAsDataclass, Base):
+    __tablename__ = "file_tag_inferred"
+
+    relative_path: Mapped[str] = mapped_column(
+        ForeignKey("files.relative_path", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    slug: Mapped[str] = mapped_column(primary_key=True)
+    facet: Mapped[str]
+    source: Mapped[str]
+
+    def detached(self) -> "FileTagInferred":
+        return FileTagInferred(**asdict(self))
+
+
+class FileTagUser(MappedAsDataclass, Base):
+    __tablename__ = "file_tag_user"
+
+    relative_path: Mapped[str] = mapped_column(
+        ForeignKey("files.relative_path", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    slug: Mapped[str] = mapped_column(primary_key=True)
+    facet: Mapped[str]
+    present: Mapped[bool]
+
+    def detached(self) -> "FileTagUser":
+        return FileTagUser(**asdict(self))
+
+
+class FileTag(MappedAsDataclass, Base):
+    __tablename__ = "file_tag"
+
+    relative_path: Mapped[str] = mapped_column(
+        ForeignKey("files.relative_path", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    slug: Mapped[str] = mapped_column(primary_key=True)
+    facet: Mapped[str]
+
+    def detached(self) -> "FileTag":
+        return FileTag(**asdict(self))
+
+
+Index("file_tag_slug", FileTag.slug)
 
 
 @dataclass(frozen=True, slots=True)

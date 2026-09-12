@@ -5,6 +5,7 @@ import pytest
 
 from app.catalog.store import CatalogStore
 from app.indexer import scan as scan_module
+from app.indexer.form import FormEstimate
 from app.indexer.scan import scan_library
 from tests.wav_files import write_drum_library, write_sine_wav
 
@@ -249,6 +250,8 @@ def test_scan_infers_bpm_and_key_from_the_filename(tmp_path: Path) -> None:
     assert loop.key_inferred == "Cm"
     assert loop.bpm_user is None
     assert store.get_meta("808_snare.wav") is None
+    assert store.tags_by_paths(["Loop_128bpm_Cmin.wav"])["Loop_128bpm_Cmin.wav"] == ["one-shot"]
+    assert store.tags_by_paths(["808_snare.wav"])["808_snare.wav"] == ["one-shot", "snare"]
     store.close()
 
 
@@ -273,4 +276,81 @@ def test_rescan_refreshes_inferred_meta_without_opening_audio(
     assert meta.key_inferred == "Cm"
     assert meta.bpm_user == 130
     assert meta.key_user == "Dm"
+    store.close()
+
+
+def test_scan_writes_inferred_tags_and_keeps_user_overlay(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Drums" / "Kicks" / "kick.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store)
+    assert store.tags_by_paths(["Drums/Kicks/kick.wav"])["Drums/Kicks/kick.wav"] == [
+        "one-shot",
+        "kick",
+    ]
+    store.set_user_tag("Drums/Kicks/kick.wav", "kick", present=False)
+    store.set_user_tag("Drums/Kicks/kick.wav", "perc", present=True)
+    assert store.tags_by_paths(["Drums/Kicks/kick.wav"])["Drums/Kicks/kick.wav"] == [
+        "one-shot",
+        "perc",
+    ]
+    scan_library(library, store)
+    assert store.tags_by_paths(["Drums/Kicks/kick.wav"])["Drums/Kicks/kick.wav"] == [
+        "one-shot",
+        "perc",
+    ]
+    store.close()
+
+
+def test_scan_runs_estimator_only_on_changed_wavs(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    path = library / "phrase.wav"
+    write_sine_wav(path, seconds=1.0)
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    calls: list[str] = []
+
+    def estimator(audio_path: Path) -> FormEstimate:
+        calls.append(audio_path.name)
+        return FormEstimate(is_loop=True, bpm=128)
+
+    scan_library(library, store, form_estimator=estimator)
+    scan_library(library, store, form_estimator=estimator)
+    assert calls == ["phrase.wav"]
+    meta = store.get_meta("phrase.wav")
+    assert meta is not None
+    assert meta.audio_is_loop is True
+    assert meta.audio_bpm == 128
+    assert meta.bpm_inferred == 128
+    assert store.tags_by_paths(["phrase.wav"])["phrase.wav"] == ["loop"]
+    write_sine_wav(path, seconds=1.2, frequency=200)
+    scan_library(library, store, form_estimator=estimator)
+    assert calls == ["phrase.wav", "phrase.wav"]
+    store.close()
+
+
+def test_scan_skips_estimator_for_short_files(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "hat.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+
+    def fail_estimator(_path: Path) -> FormEstimate:
+        raise AssertionError("short files must not be analyzed")
+
+    scan_library(library, store, form_estimator=fail_estimator)
+    assert store.tags_by_paths(["hat.wav"])["hat.wav"] == ["one-shot", "hat"]
+    store.close()
+
+
+def test_scan_uses_path_form_when_duration_is_ambiguous(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Loops" / "Melodic" / "synth_lead.wav", seconds=2.0)
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store, form_estimator=lambda _path: FormEstimate(None, None))
+    assert store.tags_by_paths(["Loops/Melodic/synth_lead.wav"])[
+        "Loops/Melodic/synth_lead.wav"
+    ] == ["loop", "synth", "melody"]
     store.close()

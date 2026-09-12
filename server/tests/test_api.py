@@ -32,6 +32,7 @@ def test_startup_scan_lists_nested_library(client: TestClient) -> None:
     assert kicks["files"][0]["duration_seconds"] is not None
     assert kicks["files"][0]["bpm"] is None
     assert kicks["files"][0]["key"] is None
+    assert kicks["files"][0]["tags"] == ["one-shot", "kick"]
 
 
 def test_rescan_endpoint_indexes_a_new_file(client: TestClient, tmp_path: Path) -> None:
@@ -60,6 +61,7 @@ def test_files_lists_the_library_in_path_order(client: TestClient) -> None:
     assert body["items"][2]["parent_path"] == ""
     assert body["items"][0]["bpm"] is None
     assert body["items"][0]["key"] is None
+    assert body["items"][0]["tags"] == ["one-shot", "kick"]
 
 
 def test_files_return_inferred_bpm_and_key_and_prefer_user_values(
@@ -75,6 +77,16 @@ def test_files_return_inferred_bpm_and_key_and_prefer_user_values(
     overridden = client.get("/catalog/files", params={"q": "Loop_128"}).json()["items"][0]
     assert overridden["bpm"] == 140
     assert overridden["key"] == "Dm"
+
+
+def test_files_return_tags_and_filter_by_all_tags(client: TestClient) -> None:
+    kick = client.get("/catalog/files", params={"tag": "kick"}).json()
+    assert [item["path"] for item in kick["items"]] == ["Drums/Kicks/kick.wav"]
+    assert kick["total"] == 1
+    both = client.get("/catalog/files", params=[("tag", "one-shot"), ("tag", "snare")]).json()
+    assert [item["path"] for item in both["items"]] == ["Drums/Snares/snare.wav"]
+    none = client.get("/catalog/files", params=[("tag", "kick"), ("tag", "snare")]).json()
+    assert none == {"items": [], "total": 0, "limit": 50, "offset": 0}
 
 
 def test_files_paginates_without_changing_total(client: TestClient) -> None:
@@ -120,6 +132,7 @@ def test_files_rejects_invalid_query(client: TestClient) -> None:
     assert client.get("/catalog/files", params={"sort": "bpm"}).status_code == 400
     assert client.get("/catalog/files", params={"prefix": "../etc"}).status_code == 400
     assert client.get("/catalog/files", params={"q": "x" * 201}).status_code == 400
+    assert client.get("/catalog/files", params={"tag": "nope"}).status_code == 400
 
 
 def test_files_empty_library(tmp_path: Path) -> None:

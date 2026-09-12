@@ -36,6 +36,7 @@
 	let playLabel = $derived(playing ? 'Pause' : 'Play');
 	let likeLabel = $derived(liked ? 'Unlike' : 'Like');
 	let downloadLabel = $derived(downloading ? 'Downloading' : 'Download');
+	let tags = $derived(file.tags ?? []);
 
 	function stopAndToggle(event: MouseEvent): void {
 		event.stopPropagation();
@@ -86,9 +87,12 @@
 	<td class="min-w-0">
 		<div class="flex min-w-0 flex-col gap-1">
 			<span class="truncate font-medium">{title}</span>
-			<span class="flex min-w-0 items-center gap-1">
+			<span class="flex min-w-0 flex-wrap items-center gap-1">
 				<span class="truncate text-xs opacity-60">{file.parent_path || 'Library'}</span>
 				<span class="badge badge-ghost badge-xs shrink-0">{formatAudioFormat(file.format)}</span>
+				{#each tags as tag (tag)}
+					<span class="badge badge-ghost badge-xs shrink-0">{tag}</span>
+				{/each}
 			</span>
 		</div>
 	</td>

@@ -15,3 +15,4 @@ class Settings(BaseSettings):
     library_root: Path = Path("/library")
     database_path: Path = Path("/data/catalog.sqlite")
     cors_origins: list[str] = Field(default_factory=lambda: list(DEFAULT_CORS_ORIGINS))
+    loop_tempo_estimator: str = "armarium-loop-tempo"

@@ -5,6 +5,7 @@ from app.api.context import app_context
 from app.catalog.models import FileMeta, FileRecord, FolderEntry
 from app.catalog.paths import parse_folder_path
 from app.catalog.store import FILE_SORTS, CatalogStore
+from app.indexer.form import estimator_for
 from app.indexer.scan import scan_library
 
 MAX_PAGE_SIZE = 200
@@ -34,6 +35,7 @@ class FileResponse(BaseModel):
     channels: int | None
     bpm: float | None
     key: str | None
+    tags: list[str]
 
 
 class ListingResponse(BaseModel):
@@ -54,7 +56,11 @@ def rescan(request: Request) -> ScanResponse:
     ctx = app_context(request)
     if not ctx.settings.library_root.is_dir():
         raise HTTPException(status_code=400, detail="library root is not a directory")
-    file_count = scan_library(ctx.settings.library_root, ctx.store)
+    file_count = scan_library(
+        ctx.settings.library_root,
+        ctx.store,
+        form_estimator=estimator_for(ctx.settings.loop_tempo_estimator),
+    )
     return ScanResponse(file_count=file_count)
 
 
@@ -81,6 +87,7 @@ def list_files(  # pylint: disable=too-many-arguments,too-many-positional-argume
     prefix: str | None = Query(default=None),
     q: str | None = Query(default=None),
     sort: str = Query(default="path"),
+    tag: list[str] | None = Query(default=None),
 ) -> FilesResponse:
     if not 1 <= limit <= MAX_PAGE_SIZE:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
@@ -96,9 +103,12 @@ def list_files(  # pylint: disable=too-many-arguments,too-many-positional-argume
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     ctx = app_context(request)
-    page = ctx.store.list_files(
-        offset=offset, limit=limit, prefix=folder, query=query, sort=sort
-    )
+    try:
+        page = ctx.store.list_files(
+            offset=offset, limit=limit, prefix=folder, query=query, sort=sort, tags=tag or []
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     return FilesResponse(
         items=_file_responses(ctx.store, page.items),
         total=page.total,
@@ -112,11 +122,18 @@ def _folder_response(entry: FolderEntry) -> FolderResponse:
 
 
 def _file_responses(store: CatalogStore, records: list[FileRecord]) -> list[FileResponse]:
-    meta = store.meta_by_paths([record.relative_path for record in records])
-    return [_file_response(record, meta.get(record.relative_path)) for record in records]
+    paths = [record.relative_path for record in records]
+    meta = store.meta_by_paths(paths)
+    tags = store.tags_by_paths(paths)
+    return [
+        _file_response(record, meta.get(record.relative_path), tags.get(record.relative_path, []))
+        for record in records
+    ]
 
 
-def _file_response(record: FileRecord, meta: FileMeta | None) -> FileResponse:
+def _file_response(
+    record: FileRecord, meta: FileMeta | None, tags: list[str]
+) -> FileResponse:
     return FileResponse(
         name=record.name,
         path=record.relative_path,
@@ -128,4 +145,5 @@ def _file_response(record: FileRecord, meta: FileMeta | None) -> FileResponse:
         channels=record.channels,
         bpm=meta.bpm if meta is not None else None,
         key=meta.key if meta is not None else None,
+        tags=tags,
     )

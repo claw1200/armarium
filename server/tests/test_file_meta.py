@@ -5,6 +5,7 @@ import pytest
 
 from app.catalog.meta import CANONICAL_KEYS, check_bpm, check_key
 from app.catalog.store import CatalogStore
+from app.indexer.form import FormEstimate
 from app.indexer.scan import scan_library
 from tests.wav_files import write_sine_wav
 
@@ -153,4 +154,33 @@ def test_meta_writes_require_a_known_file_and_a_field(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="invalid key"):
         store.set_inferred(_KICK, key="Db")
     assert store.get_meta(_KICK) is None
+    store.close()
+
+
+def test_user_tag_overlay_survives_and_cascades(tmp_path: Path) -> None:
+    store = _store_with_kick(tmp_path)
+    store.set_user_tag(_KICK, "kick", present=False)
+    store.set_user_tag(_KICK, "fx", present=True)
+    assert store.tags_by_paths([_KICK])[_KICK] == ["one-shot", "fx"]
+    assert store.apply_scan([], [_KICK]) == 0
+    assert store.tags_by_paths([_KICK])[_KICK] == []
+    store.close()
+
+
+def test_list_files_filters_by_all_requested_tags(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Drums" / "Kicks" / "kick.wav")
+    write_sine_wav(library / "Drums" / "Hats" / "hat.wav")
+    write_sine_wav(library / "Loops" / "Melodic" / "synth_lead.wav", seconds=2.0)
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store, form_estimator=lambda _path: FormEstimate(None, None))
+    kicks = store.list_files(offset=0, limit=50, tags=["kick"])
+    assert [item.relative_path for item in kicks.items] == ["Drums/Kicks/kick.wav"]
+    both = store.list_files(offset=0, limit=50, tags=["loop", "synth"])
+    assert [item.relative_path for item in both.items] == ["Loops/Melodic/synth_lead.wav"]
+    missing = store.list_files(offset=0, limit=50, tags=["kick", "loop"])
+    assert not missing.items
+    with pytest.raises(ValueError, match="invalid tag"):
+        store.list_files(offset=0, limit=50, tags=["nope"])
     store.close()

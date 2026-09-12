@@ -6,7 +6,7 @@ from sqlite3 import Connection
 from threading import Lock
 from types import EllipsisType
 
-from sqlalchemy import create_engine, delete, event, or_, select, update
+from sqlalchemy import create_engine, delete, event, or_, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -14,7 +14,24 @@ from sqlalchemy.sql.functions import count
 
 from app.catalog.listing import child_folder_names
 from app.catalog.meta import check_bpm, check_key
-from app.catalog.models import Base, CatalogListing, FileMeta, FilePage, FileRecord, FolderEntry
+from app.catalog.models import (
+    Base,
+    CatalogListing,
+    FileMeta,
+    FilePage,
+    FileRecord,
+    FileTag,
+    FileTagInferred,
+    FileTagUser,
+    FolderEntry,
+)
+from app.catalog.tags import (
+    FORM_SLUGS,
+    Inference,
+    check_tag,
+    facet_for,
+    ordered_slugs,
+)
 
 FILE_SORTS = frozenset({"path", "name", "duration"})
 _SQLITE_IN_CHUNK = 500
@@ -42,6 +59,9 @@ class CatalogStore:
 
     def initialize(self) -> None:
         Base.metadata.create_all(self._engine)
+        with self._session() as session:
+            _ensure_file_meta_columns(session)
+            session.commit()
 
     def fingerprints(self) -> dict[str, tuple[int, int]]:
         with self._session() as session:
@@ -49,6 +69,20 @@ class CatalogStore:
                 select(FileRecord.relative_path, FileRecord.size_bytes, FileRecord.mtime_ns)
             )
             return {relative: (size, mtime) for relative, size, mtime in rows}
+
+    def file_stats(self) -> dict[str, tuple[float | None, str]]:
+        with self._session() as session:
+            rows = session.execute(
+                select(FileRecord.relative_path, FileRecord.duration_seconds, FileRecord.format)
+            )
+            return {relative: (duration, fmt) for relative, duration, fmt in rows}
+
+    def audio_facts(self) -> dict[str, tuple[bool | None, float | None]]:
+        with self._session() as session:
+            rows = session.execute(
+                select(FileMeta.relative_path, FileMeta.audio_is_loop, FileMeta.audio_bpm)
+            )
+            return {relative: (is_loop, bpm) for relative, is_loop, bpm in rows}
 
     def apply_scan(self, upserts: Sequence[FileRecord], delete_paths: Collection[str]) -> int:
         with self._session() as session:
@@ -93,6 +127,28 @@ class CatalogStore:
             key_user=_checked_key(key),
         )
 
+    def set_user_tag(self, relative_path: str, slug: str, *, present: bool) -> None:
+        check_tag(slug)
+        with self._session() as session:
+            if session.get(FileRecord, relative_path) is None:
+                raise LookupError(relative_path)
+            statement = sqlite_insert(FileTagUser).values(
+                relative_path=relative_path,
+                slug=slug,
+                facet=facet_for(slug),
+                present=present,
+            )
+            statement = statement.on_conflict_do_update(
+                index_elements=[FileTagUser.relative_path, FileTagUser.slug],
+                set_={
+                    "facet": statement.excluded.facet,
+                    "present": statement.excluded.present,
+                },
+            )
+            session.execute(statement)
+            _refresh_effective(session, [relative_path])
+            session.commit()
+
     def list_folder(self, folder: str) -> CatalogListing:
         with self._session() as session:
             files = [
@@ -123,6 +179,7 @@ class CatalogStore:
         prefix: str = "",
         query: str = "",
         sort: str = "path",
+        tags: Sequence[str] = (),
     ) -> FilePage:
         order = _SORT_COLUMNS.get(sort)
         if order is None:
@@ -132,6 +189,9 @@ class CatalogStore:
             filters += (_files_under(prefix),)
         if query:
             filters += (_path_matches(query),)
+        for slug in dict.fromkeys(tags):
+            check_tag(slug)
+            filters += (_has_tag(slug),)
         with self._session() as session:
             total = (
                 session.scalar(select(count()).select_from(FileRecord).where(*filters)) or 0
@@ -156,12 +216,25 @@ class CatalogStore:
                     found[row.relative_path] = row.detached()
         return found
 
+    def tags_by_paths(self, paths: Sequence[str]) -> dict[str, list[str]]:
+        unique = list(dict.fromkeys(paths))
+        found: dict[str, list[str]] = {path: [] for path in unique}
+        with self._session() as session:
+            for offset in range(0, len(unique), _SQLITE_IN_CHUNK):
+                chunk = unique[offset : offset + _SQLITE_IN_CHUNK]
+                grouped: dict[str, list[tuple[str, str]]] = {}
+                for row in session.scalars(select(FileTag).where(FileTag.relative_path.in_(chunk))):
+                    grouped.setdefault(row.relative_path, []).append((row.slug, row.facet))
+                for path, pairs in grouped.items():
+                    found[path] = ordered_slugs(slug for slug, _facet in pairs)
+        return found
+
     def close(self) -> None:
         with self._lock:
             self._engine.dispose()
 
     def _write_meta(
-        self, relative_path: str, **columns: float | str | None | EllipsisType
+        self, relative_path: str, **columns: float | str | bool | None | EllipsisType
     ) -> FileMeta:
         values = {name: value for name, value in columns.items() if value is not ...}
         if not values:
@@ -182,28 +255,39 @@ class CatalogStore:
             session.commit()
             return result
 
-    def apply_inferred(self, updates: Iterable[tuple[str, float | None, str | None]]) -> None:
+    def apply_inferences(self, updates: Iterable[Inference]) -> None:
         rows = list(updates)
         if not rows:
             return
-        upserts: list[dict[str, str | float | None]] = []
+        upserts: list[dict[str, str | float | bool | None]] = []
         clears: list[str] = []
-        for relative_path, bpm, key in rows:
-            check_bpm(bpm)
-            check_key(key)
-            if bpm is None and key is None:
-                clears.append(relative_path)
+        for item in rows:
+            check_bpm(item.bpm)
+            check_key(item.key)
+            check_bpm(item.audio_bpm)
+            if (
+                item.bpm is None
+                and item.key is None
+                and item.audio_is_loop is None
+                and item.audio_bpm is None
+            ):
+                clears.append(item.relative_path)
             else:
                 upserts.append(
                     {
-                        "relative_path": relative_path,
-                        "bpm_inferred": bpm,
-                        "key_inferred": key,
+                        "relative_path": item.relative_path,
+                        "bpm_inferred": item.bpm,
+                        "key_inferred": item.key,
+                        "audio_is_loop": item.audio_is_loop,
+                        "audio_bpm": item.audio_bpm,
                     }
                 )
+        paths = [item.relative_path for item in rows]
         with self._session() as session:
             _clear_inferred(session, clears)
             _upsert_inferred(session, upserts)
+            _replace_inferred_tags(session, rows)
+            _refresh_effective(session, paths)
             session.commit()
 
 
@@ -231,7 +315,9 @@ def _upsert_records(session: Session, upserts: Sequence[FileRecord]) -> None:
         session.execute(statement, payload[offset : offset + _SQLITE_IN_CHUNK])
 
 
-def _upsert_inferred(session: Session, upserts: Sequence[dict[str, str | float | None]]) -> None:
+def _upsert_inferred(
+    session: Session, upserts: Sequence[dict[str, str | float | bool | None]]
+) -> None:
     if not upserts:
         return
     statement = sqlite_insert(FileMeta)
@@ -240,6 +326,8 @@ def _upsert_inferred(session: Session, upserts: Sequence[dict[str, str | float |
         set_={
             "bpm_inferred": statement.excluded.bpm_inferred,
             "key_inferred": statement.excluded.key_inferred,
+            "audio_is_loop": statement.excluded.audio_is_loop,
+            "audio_bpm": statement.excluded.audio_bpm,
         },
     )
     for offset in range(0, len(upserts), _SQLITE_IN_CHUNK):
@@ -252,8 +340,84 @@ def _clear_inferred(session: Session, paths: Sequence[str]) -> None:
         session.execute(
             update(FileMeta)
             .where(FileMeta.relative_path.in_(chunk))
-            .values(bpm_inferred=None, key_inferred=None)
+            .values(bpm_inferred=None, key_inferred=None, audio_is_loop=None, audio_bpm=None)
         )
+
+
+def _replace_inferred_tags(session: Session, updates: Sequence[Inference]) -> None:
+    paths = [item.relative_path for item in updates]
+    for offset in range(0, len(paths), _SQLITE_IN_CHUNK):
+        chunk = paths[offset : offset + _SQLITE_IN_CHUNK]
+        session.execute(delete(FileTagInferred).where(FileTagInferred.relative_path.in_(chunk)))
+    payload = [
+        {
+            "relative_path": item.relative_path,
+            "slug": hit.slug,
+            "facet": hit.facet,
+            "source": hit.source,
+        }
+        for item in updates
+        for hit in item.tags
+    ]
+    if not payload:
+        return
+    statement = sqlite_insert(FileTagInferred)
+    for offset in range(0, len(payload), _SQLITE_IN_CHUNK):
+        session.execute(statement, payload[offset : offset + _SQLITE_IN_CHUNK])
+
+
+def _refresh_effective(session: Session, paths: Sequence[str]) -> None:
+    unique = list(dict.fromkeys(paths))
+    for offset in range(0, len(unique), _SQLITE_IN_CHUNK):
+        chunk = unique[offset : offset + _SQLITE_IN_CHUNK]
+        inferred_by_path: dict[str, list[FileTagInferred]] = {path: [] for path in chunk}
+        user_by_path: dict[str, list[FileTagUser]] = {path: [] for path in chunk}
+        for row in session.scalars(
+            select(FileTagInferred).where(FileTagInferred.relative_path.in_(chunk))
+        ):
+            inferred_by_path[row.relative_path].append(row)
+        for row in session.scalars(
+            select(FileTagUser).where(FileTagUser.relative_path.in_(chunk))
+        ):
+            user_by_path[row.relative_path].append(row)
+        session.execute(delete(FileTag).where(FileTag.relative_path.in_(chunk)))
+        payload = []
+        for path in chunk:
+            for slug, facet in _effective_pairs(inferred_by_path[path], user_by_path[path]):
+                payload.append({"relative_path": path, "slug": slug, "facet": facet})
+        if payload:
+            session.execute(sqlite_insert(FileTag), payload)
+
+
+def _effective_pairs(
+    inferred: Sequence[FileTagInferred],
+    user: Sequence[FileTagUser],
+) -> list[tuple[str, str]]:
+    slugs = {row.slug: row.facet for row in inferred}
+    user_forms: list[str] = []
+    for row in user:
+        if row.present:
+            slugs[row.slug] = row.facet
+            if row.slug in FORM_SLUGS:
+                user_forms.append(row.slug)
+        else:
+            slugs.pop(row.slug, None)
+    forms = [slug for slug in slugs if slug in FORM_SLUGS]
+    if len(forms) > 1:
+        keep = user_forms[-1] if user_forms else forms[0]
+        for slug in forms:
+            if slug != keep:
+                del slugs[slug]
+    return [(slug, slugs[slug]) for slug in ordered_slugs(slugs)]
+
+
+def _ensure_file_meta_columns(session: Session) -> None:
+    rows = session.execute(text("PRAGMA table_info(file_meta)")).fetchall()
+    columns = {row[1] for row in rows}
+    if "audio_is_loop" not in columns:
+        session.execute(text("ALTER TABLE file_meta ADD COLUMN audio_is_loop BOOLEAN"))
+    if "audio_bpm" not in columns:
+        session.execute(text("ALTER TABLE file_meta ADD COLUMN audio_bpm FLOAT"))
 
 
 def _checked_bpm(bpm: float | None | EllipsisType) -> float | None | EllipsisType:
@@ -285,6 +449,10 @@ def _files_under(prefix: str) -> ColumnElement[bool]:
 
 def _path_matches(query: str) -> ColumnElement[bool]:
     return FileRecord.relative_path.contains(query, autoescape=True)
+
+
+def _has_tag(slug: str) -> ColumnElement[bool]:
+    return FileRecord.relative_path.in_(select(FileTag.relative_path).where(FileTag.slug == slug))
 
 
 def _configure_sqlite(dbapi_connection: Connection, _connection_record: object) -> None:

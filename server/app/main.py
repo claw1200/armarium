@@ -9,6 +9,7 @@ from app.api.catalog import router as catalog_router
 from app.api.context import AppContext
 from app.catalog.store import CatalogStore
 from app.config import Settings
+from app.indexer.form import estimator_for
 from app.indexer.scan import scan_library
 
 
@@ -20,7 +21,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store = CatalogStore(resolved.database_path)
         store.initialize()
         if resolved.library_root.is_dir():
-            scan_library(resolved.library_root, store)
+            scan_library(
+                resolved.library_root,
+                store,
+                form_estimator=estimator_for(resolved.loop_tempo_estimator),
+            )
         application.state.ctx = AppContext(settings=resolved, store=store)
         try:
             yield
