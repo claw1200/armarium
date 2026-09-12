@@ -63,6 +63,20 @@ test('files url appends repeated tag filters', () => {
 	);
 });
 
+test('files url includes key and bpm filters', () => {
+	expect(catalogFilesUrl({ key: 'C#', bpm: '110-130' }, BASE)).toBe(
+		'http://127.0.0.1:8000/catalog/files?key=C%23&bpm=110-130'
+	);
+});
+
+test('files url includes path and recent filters', () => {
+	expect(
+		catalogFilesUrl({ paths: ['Drums/Kicks/kick.wav', 'root.wav'], recent: true }, BASE)
+	).toBe(
+		'http://127.0.0.1:8000/catalog/files?path=Drums%2FKicks%2Fkick.wav&path=root.wav&recent=true'
+	);
+});
+
 test('audio url encodes each path segment', () => {
 	expect(audioUrl('Pack/kick 01.wav', BASE)).toBe(
 		'http://127.0.0.1:8000/audio/Pack/kick%2001.wav'
@@ -109,6 +123,17 @@ test('fetchFiles returns a catalog page', async () => {
 	const page = { items: [kick], total: 1, limit: 50, offset: 0 };
 	const result = await fetchFiles({}, async () => new Response(JSON.stringify(page)), BASE);
 	expect(result).toEqual(page);
+});
+
+test('fetchFiles skips the catalog when no paths match the cache', async () => {
+	const result = await fetchFiles(
+		{ paths: [], offset: 50, limit: 20 },
+		async () => {
+			throw new Error('must not request the catalog');
+		},
+		BASE
+	);
+	expect(result).toEqual({ items: [], total: 0, limit: 20, offset: 50 });
 });
 
 test('fetchFiles throws when the catalog is unavailable', async () => {

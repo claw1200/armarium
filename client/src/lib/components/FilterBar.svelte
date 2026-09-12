@@ -1,54 +1,73 @@
 <script lang="ts">
-	import { filterGroups, filterTags, sortOptions } from '$lib/placeholders';
+	import { BPM_RANGES, KEY_ROOTS } from '$lib/filters';
+	import { sortOptions } from '$lib/placeholders';
+	import { FACET_ORDER, tagForFacet, type TagFacet } from '$lib/tags';
+	import TagFilter from './TagFilter.svelte';
 
-	let { resultLabel }: { resultLabel: string } = $props();
+	let {
+		resultLabel,
+		tags,
+		key,
+		bpm,
+		onfacet,
+		onkey,
+		onbpm,
+		onclear
+	}: {
+		resultLabel: string;
+		tags: string[];
+		key: string;
+		bpm: string;
+		onfacet: (facet: TagFacet, slug: string) => void;
+		onkey: (key: string) => void;
+		onbpm: (bpm: string) => void;
+		onclear: () => void;
+	} = $props();
 
-	let selectedFilters = $state<Record<string, string>>(
-		Object.fromEntries(filterGroups.map((group) => [group.id, '']))
-	);
-	let selectedTag = $state('');
 	let sort = $state<(typeof sortOptions)[number]>(sortOptions[0]);
+	let hasFilters = $derived(tags.length > 0 || key !== '' || bpm !== '');
 
-	let hasFilters = $derived(Object.values(selectedFilters).some(Boolean) || selectedTag !== '');
+	function onKeyChange(event: Event): void {
+		if (event.currentTarget instanceof HTMLSelectElement) {
+			onkey(event.currentTarget.value);
+		}
+	}
 
-	function clearFilters(): void {
-		selectedFilters = Object.fromEntries(filterGroups.map((group) => [group.id, '']));
-		selectedTag = '';
+	function onBpmChange(event: Event): void {
+		if (event.currentTarget instanceof HTMLSelectElement) {
+			onbpm(event.currentTarget.value);
+		}
 	}
 </script>
 
 <div class="flex flex-col gap-2">
 	<div class="flex items-center gap-2">
 		<div class="flex min-w-0 flex-1 flex-wrap gap-2">
-			{#each filterGroups as group (group.id)}
-				<select class="select select-sm w-fit" bind:value={selectedFilters[group.id]}>
-					<option value="">{group.label}</option>
-					{#each group.options as option (option)}
-						<option value={option}>{option}</option>
-					{/each}
-				</select>
-			{/each}
+			<select class="select select-sm w-fit" aria-label="Key" value={key} onchange={onKeyChange}>
+				<option value="">Key</option>
+				{#each KEY_ROOTS as root (root)}
+					<option value={root}>{root}</option>
+				{/each}
+			</select>
+			<select class="select select-sm w-fit" aria-label="BPM" value={bpm} onchange={onBpmChange}>
+				<option value="">BPM</option>
+				{#each BPM_RANGES as range (range.id)}
+					<option value={range.id}>{range.label}</option>
+				{/each}
+			</select>
 		</div>
 		{#if hasFilters}
-			<button type="button" class="btn btn-ghost btn-sm shrink-0" onclick={clearFilters}>
+			<button type="button" class="btn btn-ghost btn-sm shrink-0" onclick={onclear}>
 				Clear all
 			</button>
 		{/if}
 	</div>
 
-	<form class="filter" onreset={() => (selectedTag = '')}>
-		<input class="btn btn-xs btn-square" type="reset" value="×" />
-		{#each filterTags as tag (tag)}
-			<input
-				class="btn btn-xs"
-				type="radio"
-				name="library-tag"
-				aria-label={tag}
-				value={tag}
-				bind:group={selectedTag}
-			/>
+	<div class="flex flex-col gap-2">
+		{#each FACET_ORDER as facet (facet)}
+			<TagFilter {facet} value={tagForFacet(tags, facet)} onselect={(slug) => onfacet(facet, slug)} />
 		{/each}
-	</form>
+	</div>
 
 	<div class="flex items-center justify-between gap-2 text-sm">
 		<span class="opacity-80">{resultLabel}</span>

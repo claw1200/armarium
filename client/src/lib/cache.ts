@@ -20,6 +20,13 @@ export async function listCached(relativePaths: string[]): Promise<string[]> {
 	return invoke<string[]>('cached_paths', { relativePaths });
 }
 
+export async function listCachedFiles(): Promise<string[]> {
+	if (!isTauri()) {
+		return [];
+	}
+	return invoke<string[]>('list_cached');
+}
+
 export async function startCachedDrag(relativePath: string): Promise<CachedDrag> {
 	if (!isTauri()) {
 		throw new Error(desktopOnlyMessage);

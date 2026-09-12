@@ -9,6 +9,7 @@
 		playingPath,
 		cached,
 		downloadingPath,
+		emptyText = 'No samples in the library.',
 		onpreview,
 		ontogglePlay,
 		ondownload,
@@ -20,6 +21,7 @@
 		playingPath: string | null;
 		cached: Set<string>;
 		downloadingPath: string | null;
+		emptyText?: string;
 		onpreview: (file: CatalogFile) => void;
 		ontogglePlay: (file: CatalogFile) => void;
 		ondownload: (file: CatalogFile) => void;
@@ -31,7 +33,7 @@
 </script>
 
 {#if items.length === 0}
-	<EmptyState text="No samples in the library." />
+	<EmptyState text={emptyText} />
 {:else}
 	<div class="overflow-x-auto">
 		<table class="table table-pin-rows table-xs table-fixed w-full">

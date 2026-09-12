@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { scanWatch } from '$lib/scan';
+	import type { LocationId } from '$lib/locations';
+	import type { TagFacet } from '$lib/tags';
 	import LibrarySidebar from './LibrarySidebar.svelte';
 	import SearchBar from './SearchBar.svelte';
 
@@ -8,16 +10,24 @@
 
 	let {
 		q = '',
+		location = 'all',
+		tags = [],
 		loading = false,
 		onquery,
 		onsearch,
+		onlocation,
+		onfacet,
 		children,
 		footer
 	}: {
 		q?: string;
+		location?: LocationId;
+		tags?: string[];
 		loading?: boolean;
 		onquery?: (q: string) => void;
 		onsearch?: (q: string) => void;
+		onlocation?: (location: LocationId) => void;
+		onfacet?: (facet: TagFacet, slug: string) => void;
 		children: Snippet;
 		footer?: Snippet;
 	} = $props();
@@ -61,6 +71,6 @@
 	</div>
 	<div class="drawer-side is-drawer-close:overflow-visible z-20">
 		<label for={drawerId} class="drawer-overlay" aria-label="Close sidebar"></label>
-		<LibrarySidebar bind:drawerOpen />
+		<LibrarySidebar bind:drawerOpen {location} {tags} {onlocation} {onfacet} />
 	</div>
 </div>

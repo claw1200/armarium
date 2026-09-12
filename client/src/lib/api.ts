@@ -39,6 +39,10 @@ export type CatalogFilesQuery = {
 	q?: string;
 	sort?: 'path' | 'name' | 'duration';
 	tags?: string[];
+	key?: string;
+	bpm?: string;
+	paths?: string[];
+	recent?: boolean;
 };
 
 export const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
@@ -81,6 +85,18 @@ export function catalogFilesUrl(query: CatalogFilesQuery = {}, base = apiBase())
 	}
 	for (const tag of query.tags ?? []) {
 		url.searchParams.append('tag', tag);
+	}
+	if (query.key) {
+		url.searchParams.set('key', query.key);
+	}
+	if (query.bpm) {
+		url.searchParams.set('bpm', query.bpm);
+	}
+	for (const path of query.paths ?? []) {
+		url.searchParams.append('path', path);
+	}
+	if (query.recent) {
+		url.searchParams.set('recent', 'true');
 	}
 	return url.toString();
 }
@@ -157,6 +173,14 @@ export async function fetchFiles(
 	fetchImpl: typeof fetch = fetch,
 	base = apiBase()
 ): Promise<CatalogPage> {
+	if (query.paths !== undefined && query.paths.length === 0) {
+		return {
+			items: [],
+			total: 0,
+			limit: query.limit ?? DEFAULT_PAGE_SIZE,
+			offset: query.offset ?? 0
+		};
+	}
 	const response = await fetchImpl(catalogFilesUrl(query, base));
 	if (!response.ok) {
 		throw new Error(`Catalog request failed (${response.status})`);

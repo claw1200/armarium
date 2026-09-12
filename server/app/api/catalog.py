@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
@@ -7,8 +8,9 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.api.context import app_context
 from app.catalog.models import FileMeta, FileRecord, FolderEntry
+from app.catalog.meta import parse_bpm_range
 from app.catalog.paths import parse_folder_path
-from app.catalog.store import FILE_SORTS, CatalogStore
+from app.catalog.store import FILE_SORTS, RECENT_WINDOW_NS, CatalogStore
 
 MAX_PAGE_SIZE = 200
 DEFAULT_PAGE_SIZE = 50
@@ -111,7 +113,7 @@ def list_entries(request: Request, path: str | None = Query(default=None)) -> Li
 
 
 @router.get("/catalog/files", response_model=FilesResponse)
-def list_files(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def list_files(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     request: Request,
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
     offset: int = Query(default=0),
@@ -119,6 +121,10 @@ def list_files(  # pylint: disable=too-many-arguments,too-many-positional-argume
     q: str | None = Query(default=None),
     sort: str = Query(default="path"),
     tag: list[str] | None = Query(default=None),
+    key: str | None = Query(default=None),
+    bpm: str | None = Query(default=None),
+    path: list[str] | None = Query(default=None),
+    recent: bool = Query(default=False),
 ) -> FilesResponse:
     if not 1 <= limit <= MAX_PAGE_SIZE:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
@@ -136,7 +142,15 @@ def list_files(  # pylint: disable=too-many-arguments,too-many-positional-argume
     ctx = app_context(request)
     try:
         page = ctx.store.list_files(
-            offset=offset, limit=limit, prefix=folder, query=query, sort=sort, tags=tag or []
+            offset=offset,
+            limit=limit,
+            prefix=folder,
+            query=query,
+            sort=sort,
+            tags=tag or [],
+            paths=path,
+            mtime_after_ns=_mtime_after_ns(recent),
+            **_key_bpm_filters(key, bpm),
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -150,6 +164,17 @@ def list_files(  # pylint: disable=too-many-arguments,too-many-positional-argume
 
 def _folder_response(entry: FolderEntry) -> FolderResponse:
     return FolderResponse(name=entry.name, path=entry.path)
+
+
+def _mtime_after_ns(recent: bool) -> int | None:
+    if not recent:
+        return None
+    return time.time_ns() - RECENT_WINDOW_NS
+
+
+def _key_bpm_filters(key: str | None, bpm: str | None) -> dict[str, str | float | None]:
+    bpm_min, bpm_max = parse_bpm_range(bpm) if bpm else (None, None)
+    return {"key": key or None, "bpm_min": bpm_min, "bpm_max": bpm_max}
 
 
 def _file_responses(store: CatalogStore, records: list[FileRecord]) -> list[FileResponse]:

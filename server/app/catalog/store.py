@@ -6,14 +6,14 @@ from sqlite3 import Connection
 from threading import Lock
 from types import EllipsisType
 
-from sqlalchemy import create_engine, delete, event, or_, select, text, update
+from sqlalchemy import create_engine, delete, event, func, or_, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.functions import count
 
 from app.catalog.listing import child_folder_names
-from app.catalog.meta import check_bpm, check_key
+from app.catalog.meta import check_bpm, check_key, key_filter_values
 from app.catalog.models import (
     Base,
     CatalogListing,
@@ -34,6 +34,7 @@ from app.catalog.tags import (
 )
 
 FILE_SORTS = frozenset({"path", "name", "duration"})
+RECENT_WINDOW_NS = 7 * 24 * 60 * 60 * 1_000_000_000
 _SQLITE_IN_CHUNK = 500
 _SORT_COLUMNS = {
     "path": (FileRecord.relative_path,),
@@ -171,7 +172,7 @@ class CatalogStore:
         ]
         return CatalogListing(path=folder, folders=folders, files=files)
 
-    def list_files(  # pylint: disable=too-many-arguments
+    def list_files(  # pylint: disable=too-many-arguments,too-many-locals
         self,
         *,
         offset: int,
@@ -180,26 +181,32 @@ class CatalogStore:
         query: str = "",
         sort: str = "path",
         tags: Sequence[str] = (),
+        key: str | None = None,
+        bpm_min: float | None = None,
+        bpm_max: float | None = None,
+        paths: Sequence[str] | None = None,
+        mtime_after_ns: int | None = None,
     ) -> FilePage:
         order = _SORT_COLUMNS.get(sort)
         if order is None:
             raise ValueError("invalid sort")
-        filters: tuple[ColumnElement[bool], ...] = ()
-        if prefix:
-            filters += (_files_under(prefix),)
-        if query:
-            filters += (_path_matches(query),)
-        for slug in dict.fromkeys(tags):
-            check_tag(slug)
-            filters += (_has_tag(slug),)
+        wanted = _wanted_paths(paths)
+        if paths is not None and not wanted:
+            return FilePage(items=[], total=0, limit=limit, offset=offset)
+        filters = _file_filters(
+            prefix, query, tags, key, bpm_min, bpm_max, wanted, mtime_after_ns
+        )
+        listing = select(FileRecord)
+        counted = select(count()).select_from(FileRecord)
+        if key is not None or bpm_min is not None or bpm_max is not None:
+            listing = listing.join(FileMeta)
+            counted = counted.join(FileMeta)
         with self._session() as session:
-            total = (
-                session.scalar(select(count()).select_from(FileRecord).where(*filters)) or 0
-            )
+            total = session.scalar(counted.where(*filters)) or 0
             items = [
                 row.detached()
                 for row in session.scalars(
-                    select(FileRecord).where(*filters).order_by(*order).offset(offset).limit(limit)
+                    listing.where(*filters).order_by(*order).offset(offset).limit(limit)
                 )
             ]
         return FilePage(items=items, total=total, limit=limit, offset=offset)
@@ -449,6 +456,64 @@ def _files_under(prefix: str) -> ColumnElement[bool]:
 
 def _path_matches(query: str) -> ColumnElement[bool]:
     return FileRecord.relative_path.contains(query, autoescape=True)
+
+
+def _wanted_paths(paths: Sequence[str] | None) -> tuple[str, ...]:
+    if paths is None:
+        return ()
+    return tuple(dict.fromkeys(path for path in paths if path))
+
+
+def _paths_in(paths: Sequence[str]) -> ColumnElement[bool]:
+    clauses = [
+        FileRecord.relative_path.in_(paths[offset : offset + _SQLITE_IN_CHUNK])
+        for offset in range(0, len(paths), _SQLITE_IN_CHUNK)
+    ]
+    clauses.extend(
+        FileRecord.relative_path.endswith(f"/{path}", autoescape=True) for path in paths
+    )
+    return or_(*clauses)
+
+
+def _file_filters(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    prefix: str,
+    query: str,
+    tags: Sequence[str],
+    key: str | None,
+    bpm_min: float | None,
+    bpm_max: float | None,
+    paths: Sequence[str],
+    mtime_after_ns: int | None,
+) -> tuple[ColumnElement[bool], ...]:
+    if bpm_min is not None and bpm_max is not None and bpm_min >= bpm_max:
+        raise ValueError("invalid bpm")
+    if mtime_after_ns is not None and mtime_after_ns < 0:
+        raise ValueError("invalid mtime_after")
+    filters: tuple[ColumnElement[bool], ...] = ()
+    if prefix:
+        filters += (_files_under(prefix),)
+    if query:
+        filters += (_path_matches(query),)
+    if paths:
+        filters += (_paths_in(paths),)
+    if mtime_after_ns is not None:
+        filters += (FileRecord.mtime_ns >= mtime_after_ns,)
+    for slug in dict.fromkeys(tags):
+        check_tag(slug)
+        filters += (_has_tag(slug),)
+    if key is not None:
+        filters += (
+            func.coalesce(FileMeta.key_user, FileMeta.key_inferred).in_(
+                key_filter_values(key)
+            ),
+        )
+    if bpm_min is not None:
+        check_bpm(bpm_min)
+        filters += (func.coalesce(FileMeta.bpm_user, FileMeta.bpm_inferred) >= bpm_min,)
+    if bpm_max is not None:
+        check_bpm(bpm_max)
+        filters += (func.coalesce(FileMeta.bpm_user, FileMeta.bpm_inferred) < bpm_max,)
+    return filters
 
 
 def _has_tag(slug: str) -> ColumnElement[bool]:

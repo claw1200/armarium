@@ -1,10 +1,18 @@
+import os
 import sqlite3
+import time
 from pathlib import Path
 
 import pytest
 
-from app.catalog.meta import CANONICAL_KEYS, check_bpm, check_key
-from app.catalog.store import CatalogStore
+from app.catalog.meta import (
+    CANONICAL_KEYS,
+    check_bpm,
+    check_key,
+    key_filter_values,
+    parse_bpm_range,
+)
+from app.catalog.store import RECENT_WINDOW_NS, CatalogStore
 from app.indexer.form import FormEstimate
 from app.indexer.scan import scan_library
 from tests.wav_files import write_sine_wav
@@ -28,6 +36,21 @@ def test_canonical_keys_are_the_24_sharp_spellings() -> None:
     assert "Db" not in CANONICAL_KEYS
     assert "Am" in CANONICAL_KEYS
     assert "Amin" not in CANONICAL_KEYS
+
+
+def test_key_filter_matches_a_pitch_class_or_an_exact_key() -> None:
+    assert key_filter_values("C") == ("C", "Cm")
+    assert key_filter_values("F#") == ("F#", "F#m")
+    assert key_filter_values("Cm") == ("Cm",)
+    with pytest.raises(ValueError, match="invalid key"):
+        key_filter_values("Db")
+
+
+def test_parse_bpm_range_uses_inclusive_min_and_exclusive_max() -> None:
+    assert parse_bpm_range("70-90") == (70.0, 90.0)
+    assert parse_bpm_range("150+") == (150.0, None)
+    with pytest.raises(ValueError, match="invalid bpm"):
+        parse_bpm_range("70–90")
 
 
 def test_check_bpm_and_key_reject_invalid_values() -> None:
@@ -183,4 +206,73 @@ def test_list_files_filters_by_all_requested_tags(tmp_path: Path) -> None:
     assert not missing.items
     with pytest.raises(ValueError, match="invalid tag"):
         store.list_files(offset=0, limit=50, tags=["nope"])
+    store.close()
+
+
+def test_list_files_filters_by_key_and_bpm(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "c_major.wav")
+    write_sine_wav(library / "c_minor.wav")
+    write_sine_wav(library / "fs_minor.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store, form_estimator=lambda _path: FormEstimate(None, None))
+    store.set_inferred("c_major.wav", bpm=80, key="C")
+    store.set_inferred("c_minor.wav", bpm=128, key="Cm")
+    store.set_inferred("fs_minor.wav", bpm=160, key="F#m")
+    c_files = store.list_files(offset=0, limit=50, key="C")
+    assert [item.relative_path for item in c_files.items] == ["c_major.wav", "c_minor.wav"]
+    assert store.list_files(offset=0, limit=50, key="Cm").items[0].relative_path == "c_minor.wav"
+    mid = store.list_files(offset=0, limit=50, bpm_min=110, bpm_max=130)
+    assert [item.relative_path for item in mid.items] == ["c_minor.wav"]
+    fast = store.list_files(offset=0, limit=50, bpm_min=150)
+    assert [item.relative_path for item in fast.items] == ["fs_minor.wav"]
+    both = store.list_files(offset=0, limit=50, key="C", bpm_min=70, bpm_max=90)
+    assert [item.relative_path for item in both.items] == ["c_major.wav"]
+    store.set_user("c_minor.wav", bpm=80)
+    overridden = store.list_files(offset=0, limit=50, bpm_min=70, bpm_max=90)
+    assert [item.relative_path for item in overridden.items] == ["c_major.wav", "c_minor.wav"]
+    with pytest.raises(ValueError, match="invalid key"):
+        store.list_files(offset=0, limit=50, key="Db")
+    with pytest.raises(ValueError, match="invalid bpm"):
+        store.list_files(offset=0, limit=50, bpm_min=130, bpm_max=110)
+    store.close()
+
+
+def test_list_files_filters_by_path_and_mtime(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "fresh.wav")
+    write_sine_wav(library / "other.wav")
+    write_sine_wav(library / "stale.wav")
+    stale = library / "stale.wav"
+    stale_mtime = time.time_ns() - 10 * 24 * 60 * 60 * 1_000_000_000
+    os.utime(stale, ns=(stale.stat().st_atime_ns, stale_mtime))
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store, form_estimator=lambda _path: FormEstimate(None, None))
+    by_path = store.list_files(offset=0, limit=50, paths=["fresh.wav", "missing.wav"])
+    assert [item.relative_path for item in by_path.items] == ["fresh.wav"]
+    empty = store.list_files(offset=0, limit=50, paths=[])
+    assert empty.total == 0
+    assert empty.items == []
+    recent = store.list_files(
+        offset=0, limit=50, mtime_after_ns=time.time_ns() - RECENT_WINDOW_NS
+    )
+    assert [item.relative_path for item in recent.items] == ["fresh.wav", "other.wav"]
+    with pytest.raises(ValueError, match="invalid mtime_after"):
+        store.list_files(offset=0, limit=50, mtime_after_ns=-1)
+    store.close()
+
+
+def test_list_files_matches_a_cached_path_tail(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    write_sine_wav(library / "Samples" / "Loops" / "lead.wav")
+    write_sine_wav(library / "Samples" / "Drums" / "kick.wav")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    scan_library(library, store, form_estimator=lambda _path: FormEstimate(None, None))
+    tail = store.list_files(offset=0, limit=50, paths=["Loops/lead.wav"])
+    assert [item.relative_path for item in tail.items] == ["Samples/Loops/lead.wav"]
+    exact = store.list_files(offset=0, limit=50, paths=["Samples/Drums/kick.wav"])
+    assert [item.relative_path for item in exact.items] == ["Samples/Drums/kick.wav"]
     store.close()

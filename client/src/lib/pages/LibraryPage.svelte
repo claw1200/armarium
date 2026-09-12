@@ -11,7 +11,9 @@
 	import SampleList from '$lib/components/SampleList.svelte';
 	import SamplePlayer from '$lib/components/SamplePlayer.svelte';
 	import { toErrorMessage } from '$lib/error';
+	import { emptyListText, type LocationId } from '$lib/locations';
 	import { scanWatch } from '$lib/scan';
+	import { setFacetTag, type TagFacet } from '$lib/tags';
 	import type { Attachment } from 'svelte/attachments';
 	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 
@@ -19,8 +21,21 @@
 	const searchDebounceMs = 300;
 	const loadMoreMarginPx = 240;
 
-	let { data }: { data: { catalog: CatalogPage | null; q: string; loadError: string | null } } =
-		$props();
+	let {
+		data
+	}: {
+		data: {
+			catalog: CatalogPage | null;
+			q: string;
+			tags: string[];
+			key: string;
+			bpm: string;
+			location: LocationId;
+			paths: string[] | undefined;
+			recent: boolean;
+			loadError: string | null;
+		};
+	} = $props();
 	let selectedPath = $state<string | null>(null);
 	let cached = new SvelteSet<string>();
 	let cacheError = $state<string | null>(null);
@@ -52,6 +67,7 @@
 	let resultLabel = $derived(
 		catalog ? `${total.toLocaleString()} ${total === 1 ? 'result' : 'results'}` : ''
 	);
+	let emptyText = $derived(emptyListText(data.location));
 
 	afterNavigate(() => {
 		listScroller?.scrollTo(0, 0);
@@ -75,22 +91,88 @@
 		void invalidateAll();
 	}
 
-	function filesHref(query = data.q): '/' | `/?${string}` {
-		const trimmed = query.trim();
-		if (!trimmed) {
-			return '/';
-		}
+	function filesHref(
+		query = data.q,
+		tags = data.tags,
+		key = data.key,
+		bpm = data.bpm,
+		location = data.location
+	): '/' | `/?${string}` {
 		const params = new SvelteURLSearchParams();
-		params.set('q', trimmed);
-		return `/?${params.toString()}`;
+		const trimmed = query.trim();
+		if (trimmed) {
+			params.set('q', trimmed);
+		}
+		for (const tag of tags) {
+			params.append('tag', tag);
+		}
+		if (key) {
+			params.set('key', key);
+		}
+		if (bpm) {
+			params.set('bpm', bpm);
+		}
+		if (location !== 'all') {
+			params.set('location', location);
+		}
+		const qs = params.toString();
+		return qs === '' ? '/' : `/?${qs}`;
+	}
+
+	function applyLibrary(next: {
+		q?: string;
+		tags?: string[];
+		key?: string;
+		bpm?: string;
+		location?: LocationId;
+	}): void {
+		const q = next.q ?? data.q;
+		const tags = next.tags ?? data.tags;
+		const key = next.key ?? data.key;
+		const bpm = next.bpm ?? data.bpm;
+		const location = next.location ?? data.location;
+		if (
+			q === data.q &&
+			sameTags(tags, data.tags) &&
+			key === data.key &&
+			bpm === data.bpm &&
+			location === data.location
+		) {
+			return;
+		}
+		void goto(resolve(filesHref(q, tags, key, bpm, location)), {
+			keepFocus: true,
+			noScroll: true,
+			replaceState: true
+		});
+	}
+
+	function sameTags(left: string[], right: string[]): boolean {
+		return left.length === right.length && left.every((tag, index) => tag === right[index]);
 	}
 
 	function applySearch(raw: string): void {
-		const next = raw.trim();
-		if (next === data.q) {
-			return;
-		}
-		void goto(resolve(filesHref(next)), { keepFocus: true, noScroll: true, replaceState: true });
+		applyLibrary({ q: raw.trim() });
+	}
+
+	function applyFacet(facet: TagFacet, slug: string): void {
+		applyLibrary({ tags: setFacetTag(data.tags, facet, slug) });
+	}
+
+	function applyKey(key: string): void {
+		applyLibrary({ key });
+	}
+
+	function applyBpm(bpm: string): void {
+		applyLibrary({ bpm });
+	}
+
+	function applyLocation(location: LocationId): void {
+		applyLibrary({ location });
+	}
+
+	function clearFilters(): void {
+		applyLibrary({ tags: [], key: '', bpm: '' });
 	}
 
 	function onSearchInput(raw: string): void {
@@ -269,7 +351,12 @@
 			const page = await fetchFiles({
 				offset,
 				limit: catalog.limit,
-				q: data.q || undefined
+				q: data.q || undefined,
+				tags: data.tags.length > 0 ? data.tags : undefined,
+				key: data.key || undefined,
+				bpm: data.bpm || undefined,
+				paths: data.paths,
+				recent: data.recent || undefined
 			});
 			if (gen !== moreGen) {
 				return false;
@@ -368,7 +455,16 @@
 	onpointercancel={clearPendingDrag}
 />
 
-<LibraryShell q={data.q} {loading} onquery={onSearchInput} onsearch={onSearchSubmit}>
+<LibraryShell
+	q={data.q}
+	location={data.location}
+	tags={data.tags}
+	{loading}
+	onquery={onSearchInput}
+	onsearch={onSearchSubmit}
+	onlocation={applyLocation}
+	onfacet={applyFacet}
+>
 	<main class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
 		{#if data.loadError}
 			<ErrorBanner kind="error" text={data.loadError} />
@@ -381,7 +477,16 @@
 		{/if}
 
 		{#if catalog}
-			<FilterBar {resultLabel} />
+			<FilterBar
+				{resultLabel}
+				tags={data.tags}
+				key={data.key}
+				bpm={data.bpm}
+				onfacet={applyFacet}
+				onkey={applyKey}
+				onbpm={applyBpm}
+				onclear={clearFilters}
+			/>
 		{/if}
 
 		<div
@@ -407,6 +512,7 @@
 						{playingPath}
 						{cached}
 						{downloadingPath}
+						{emptyText}
 						onpreview={onRowPreview}
 						ontogglePlay={togglePlay}
 						ondownload={downloadFile}

@@ -67,6 +67,13 @@ fn cached_paths(app: tauri::AppHandle, relative_paths: Vec<String>) -> Result<Ve
     Ok(cache::cached_relatives(&root, &relative_paths))
 }
 
+#[tauri::command]
+fn list_cached(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    let root = cache::cache_root(&home);
+    Ok(cache::list_cached_relatives(&root))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -75,7 +82,8 @@ pub fn run() {
             start_fixture_drag,
             cache_sample,
             start_cached_drag,
-            cached_paths
+            cached_paths,
+            list_cached
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

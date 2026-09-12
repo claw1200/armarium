@@ -1,3 +1,5 @@
+import os
+import time
 from pathlib import Path
 from threading import Event
 
@@ -92,6 +94,49 @@ def test_files_return_tags_and_filter_by_all_tags(client: TestClient) -> None:
     assert [item["path"] for item in both["items"]] == ["Drums/Snares/snare.wav"]
     none = client.get("/catalog/files", params=[("tag", "kick"), ("tag", "snare")]).json()
     assert none == {"items": [], "total": 0, "limit": 50, "offset": 0}
+
+
+def test_files_filter_by_key_and_bpm(client: TestClient, tmp_path: Path) -> None:
+    write_sine_wav(tmp_path / LIBRARY_DIR / "Loop_80bpm_C.wav")
+    write_sine_wav(tmp_path / LIBRARY_DIR / "Loop_128bpm_Cmin.wav")
+    write_sine_wav(tmp_path / LIBRARY_DIR / "Loop_160bpm_F#m.wav")
+    assert client.post("/catalog/scan").status_code == 200
+    wait_until_idle(client)
+    by_key = client.get("/catalog/files", params={"key": "C"}).json()
+    assert {item["path"] for item in by_key["items"]} == {
+        "Loop_80bpm_C.wav",
+        "Loop_128bpm_Cmin.wav",
+    }
+    by_bpm = client.get("/catalog/files", params={"bpm": "110-130"}).json()
+    assert [item["path"] for item in by_bpm["items"]] == ["Loop_128bpm_Cmin.wav"]
+    both = client.get("/catalog/files", params={"key": "C", "bpm": "70-90"}).json()
+    assert [item["path"] for item in both["items"]] == ["Loop_80bpm_C.wav"]
+    assert client.get("/catalog/files", params={"key": "Db"}).status_code == 400
+    assert client.get("/catalog/files", params={"bpm": "nope"}).status_code == 400
+
+
+def test_files_filter_by_path_and_recent(client: TestClient, tmp_path: Path) -> None:
+    old = tmp_path / LIBRARY_DIR / "old.wav"
+    write_sine_wav(old)
+    age = time.time() - 10 * 24 * 60 * 60
+    os.utime(old, (age, age))
+    assert client.post("/catalog/scan").status_code == 200
+    wait_until_idle(client)
+    by_path = client.get("/catalog/files", params=[("path", "root.wav")]).json()
+    assert [item["path"] for item in by_path["items"]] == ["root.wav"]
+    assert by_path["total"] == 1
+    missing = client.get("/catalog/files", params=[("path", "missing.wav")]).json()
+    assert missing == {"items": [], "total": 0, "limit": 50, "offset": 0}
+    nested = tmp_path / LIBRARY_DIR / "Samples" / "Loops" / "lead.wav"
+    write_sine_wav(nested)
+    assert client.post("/catalog/scan").status_code == 200
+    wait_until_idle(client)
+    tail = client.get("/catalog/files", params=[("path", "Loops/lead.wav")]).json()
+    assert [item["path"] for item in tail["items"]] == ["Samples/Loops/lead.wav"]
+    recent = client.get("/catalog/files", params={"recent": True}).json()
+    paths = {item["path"] for item in recent["items"]}
+    assert "old.wav" not in paths
+    assert "root.wav" in paths
 
 
 def test_files_paginates_without_changing_total(client: TestClient) -> None:

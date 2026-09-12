@@ -44,6 +44,30 @@ def check_key(key: str | None) -> None:
         raise ValueError("invalid key")
 
 
+BPM_RANGES: dict[str, tuple[float, float | None]] = {
+    "70-90": (70.0, 90.0),
+    "90-110": (90.0, 110.0),
+    "110-130": (110.0, 130.0),
+    "130-150": (130.0, 150.0),
+    "150+": (150.0, None),
+}
+
+
+def key_filter_values(key: str) -> tuple[str, ...]:
+    if key in KEY_ROOTS:
+        return (key, f"{key}m")
+    if key in CANONICAL_KEYS:
+        return (key,)
+    raise ValueError("invalid key")
+
+
+def parse_bpm_range(token: str) -> tuple[float, float | None]:
+    bounds = BPM_RANGES.get(token)
+    if bounds is None:
+        raise ValueError("invalid bpm")
+    return bounds
+
+
 def plausible_bpm(value: int, *, tagged: bool) -> bool:
     if not MIN_INFERRED_BPM <= value <= MAX_INFERRED_BPM:
         return False

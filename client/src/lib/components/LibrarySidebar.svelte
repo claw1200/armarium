@@ -1,10 +1,20 @@
 <script lang="ts">
-	import { favouriteFolders, sidebarTags } from '$lib/placeholders';
+	import { LOCATIONS, type LocationId } from '$lib/locations';
+	import { FACET_LABELS, FACET_ORDER, TAGS_BY_FACET, tagForFacet, type TagFacet } from '$lib/tags';
 
-	let { drawerOpen = $bindable(false) }: { drawerOpen?: boolean } = $props();
-
-	let selectedFavourite = $state(favouriteFolders[0]?.id ?? 'all');
-	let selectedTag = $state<string | null>(null);
+	let {
+		drawerOpen = $bindable(false),
+		location = 'all',
+		tags = [],
+		onlocation,
+		onfacet
+	}: {
+		drawerOpen?: boolean;
+		location?: LocationId;
+		tags?: string[];
+		onlocation?: (location: LocationId) => void;
+		onfacet?: (facet: TagFacet, slug: string) => void;
+	} = $props();
 
 	const sidebarLabelClass =
 		'min-w-0 flex-1 overflow-x-clip whitespace-nowrap text-start is-drawer-close:hidden';
@@ -27,13 +37,13 @@
 		if (details) details.open = true;
 	}
 
-	function selectFavourite(id: string): void {
-		selectedFavourite = id;
+	function selectLocation(id: LocationId): void {
+		onlocation?.(id);
 		handleNavClick();
 	}
 
-	function selectTag(id: string): void {
-		selectedTag = selectedTag === id ? null : id;
+	function selectTag(facet: TagFacet, slug: string): void {
+		onfacet?.(facet, tagForFacet(tags, facet) === slug ? '' : slug);
 		handleNavClick();
 	}
 </script>
@@ -56,27 +66,22 @@
 					class="min-w-0 cursor-pointer select-none is-drawer-close:after:hidden"
 					onclick={onSubmenuSummaryClick}
 				>
-					<span class="icon-[lucide--star] my-1.5 size-4 shrink-0" aria-hidden="true"></span>
-					<span class={sidebarLabelClass}>Favourites</span>
+					<span class="icon-[lucide--map-pin] my-1.5 size-4 shrink-0" aria-hidden="true"></span>
+					<span class={sidebarLabelClass}>Locations</span>
 				</summary>
 				<ul class="min-w-0 is-drawer-close:hidden">
-					{#each favouriteFolders as folder (folder.id)}
+					{#each LOCATIONS as item (item.id)}
+						{@const selected = location === item.id}
 						<li class="min-w-0">
 							<button
 								type="button"
-								class="min-w-0"
-								class:menu-active={selectedFavourite === folder.id}
-								aria-label={folder.label}
-								onclick={() => selectFavourite(folder.id)}
+								class={['min-w-0', selected && 'menu-active']}
+								aria-label={item.label}
+								aria-pressed={selected}
+								onclick={() => selectLocation(item.id)}
 							>
-								<span
-									class={[
-										'my-1.5 size-4 shrink-0',
-										folder.id === 'all' ? 'icon-[lucide--music]' : 'icon-[lucide--folder]'
-									]}
-									aria-hidden="true"
-								></span>
-								<span class={sidebarLabelClass}>{folder.label}</span>
+								<span class={['my-1.5 size-4 shrink-0', item.icon]} aria-hidden="true"></span>
+								<span class={sidebarLabelClass}>{item.label}</span>
 							</button>
 						</li>
 					{/each}
@@ -93,19 +98,23 @@
 					<span class={sidebarLabelClass}>Tags</span>
 				</summary>
 				<ul class="min-w-0 is-drawer-close:hidden">
-					{#each sidebarTags as tag (tag.id)}
-						<li class="min-w-0">
-							<button
-								type="button"
-								class="min-w-0"
-								class:menu-active={selectedTag === tag.id}
-								aria-label={tag.label}
-								onclick={() => selectTag(tag.id)}
-							>
-								<span class="icon-[lucide--tag] my-1.5 size-4 shrink-0" aria-hidden="true"></span>
-								<span class={sidebarLabelClass}>{tag.label}</span>
-							</button>
-						</li>
+					{#each FACET_ORDER as facet (facet)}
+						<li class="menu-title">{FACET_LABELS[facet]}</li>
+						{#each TAGS_BY_FACET[facet] as tag (tag)}
+							{@const selected = tagForFacet(tags, facet) === tag}
+							<li class="min-w-0">
+								<button
+									type="button"
+									class={['min-w-0', selected && 'menu-active']}
+									aria-label={tag}
+									aria-pressed={selected}
+									onclick={() => selectTag(facet, tag)}
+								>
+									<span class="icon-[lucide--tag] my-1.5 size-4 shrink-0" aria-hidden="true"></span>
+									<span class={sidebarLabelClass}>{tag}</span>
+								</button>
+							</li>
+						{/each}
 					{/each}
 				</ul>
 			</details>

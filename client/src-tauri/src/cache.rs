@@ -175,6 +175,66 @@ pub fn cached_relatives(cache_root: &Path, relatives: &[String]) -> Vec<String> 
         .collect()
 }
 
+pub fn list_cached_relatives(cache_root: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    collect_cached(cache_root, cache_root, &mut found);
+    found.sort();
+    found
+}
+
+fn collect_cached(root: &Path, dir: &Path, found: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if hidden_name(&path) {
+            continue;
+        }
+        if reject_symlinks_under(root, &path).is_err() {
+            continue;
+        }
+        let Ok(meta) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
+            collect_cached(root, &path, found);
+            continue;
+        }
+        if !meta.is_file() || meta.len() == 0 {
+            continue;
+        }
+        if let Some(relative) = posix_relative(root, &path) {
+            found.push(relative);
+        }
+    }
+}
+
+fn hidden_name(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with('.'))
+}
+
+fn posix_relative(root: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(root).ok()?;
+    let mut parts = Vec::new();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(name) => parts.push(name.to_str()?.to_string()),
+            _ => return None,
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("/"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,6 +296,33 @@ mod tests {
             ),
             ["Drums/Kicks/kick.wav"]
         );
+    }
+
+    #[test]
+    fn list_cached_relatives_walks_complete_files() {
+        let dir = tempfile::tempdir().unwrap();
+        write_complete_file(
+            &cached_file_path(dir.path(), "Drums/Kicks/kick.wav").unwrap(),
+            b"RIFF",
+        )
+        .unwrap();
+        write_complete_file(
+            &cached_file_path(dir.path(), "Loops/Kicks/kick.wav").unwrap(),
+            b"loop",
+        )
+        .unwrap();
+        let empty = cached_file_path(dir.path(), "Drums/Hats/hat.wav").unwrap();
+        fs::create_dir_all(empty.parent().unwrap()).unwrap();
+        fs::write(&empty, b"").unwrap();
+        fs::write(dir.path().join(".DS_Store"), b"ignore").unwrap();
+        assert_eq!(
+            list_cached_relatives(dir.path()),
+            [
+                "Drums/Kicks/kick.wav".to_string(),
+                "Loops/Kicks/kick.wav".to_string()
+            ]
+        );
+        assert!(list_cached_relatives(&dir.path().join("missing")).is_empty());
     }
 
     #[test]
