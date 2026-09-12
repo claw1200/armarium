@@ -4,9 +4,12 @@ import {
 	audioUrl,
 	catalogEntriesUrl,
 	catalogFilesUrl,
+	catalogScanSocketUrl,
 	DEFAULT_API_BASE,
 	fetchFiles,
-	fetchListing
+	fetchListing,
+	parseScanProgress,
+	scanPercent
 } from './api';
 
 const BASE = 'http://127.0.0.1:8000';
@@ -64,6 +67,22 @@ test('audio url encodes each path segment', () => {
 	expect(audioUrl('Pack/kick 01.wav', BASE)).toBe(
 		'http://127.0.0.1:8000/audio/Pack/kick%2001.wav'
 	);
+});
+
+test('scan socket url upgrades http to ws', () => {
+	expect(catalogScanSocketUrl(BASE)).toBe('ws://127.0.0.1:8000/catalog/scan');
+	expect(catalogScanSocketUrl('https://nas:8000/')).toBe('wss://nas:8000/catalog/scan');
+});
+
+test('parseScanProgress reads a running snapshot', () => {
+	expect(parseScanProgress('{"status":"running","done":12,"total":48}')).toEqual({
+		status: 'running',
+		done: 12,
+		total: 48
+	});
+	expect(parseScanProgress('nope')).toBeNull();
+	expect(scanPercent({ status: 'running', done: 1, total: 4 })).toBe(25);
+	expect(scanPercent({ status: 'running', done: 0, total: 0 })).toBe(0);
 });
 
 test('fetchListing returns json from a successful response', async () => {

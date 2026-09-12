@@ -1,6 +1,6 @@
 import os
 import stat
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
 from app.catalog.meta import plausible_bpm
@@ -29,12 +29,52 @@ def scan_library(
     store: CatalogStore,
     *,
     form_estimator: Callable[[Path], FormEstimate] = estimate_form,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> int:
+    progress = _reporter(on_progress)
     existing = store.fingerprints()
+    progress(0, len(existing))
+    seen, upserts, changed, indexed = _index_library(library_root, existing, progress)
+    file_count = _commit_records(store, existing, seen, upserts)
+    alive = {path for path in existing if path in seen}
+    alive.update(record.relative_path for record in upserts)
+    total = indexed + len(alive)
+    progress(indexed, total)
+    store.apply_inferences(
+        _reporting(
+            _inferences_for(library_root, store, alive, changed, form_estimator),
+            indexed,
+            total,
+            progress,
+        )
+    )
+    return file_count
+
+
+def _reporter(on_progress: Callable[[int, int], None] | None) -> Callable[[int, int], None]:
+    def report(done: int, total: int) -> None:
+        if on_progress is not None:
+            on_progress(done, total)
+
+    return report
+
+
+def _index_library(
+    library_root: Path,
+    existing: dict[str, tuple[int, int]],
+    progress: Callable[[int, int], None],
+) -> tuple[set[str], list[FileRecord], set[str], int]:
     seen: set[str] = set()
     upserts: list[FileRecord] = []
     changed: set[str] = set()
+    indexed = 0
+    known = len(existing)
     for path in iter_audio_files(library_root):
+        indexed += 1
+        if known > 0 and indexed <= known:
+            progress(indexed, known)
+        else:
+            progress(indexed, 0)
         try:
             stats = path.stat(follow_symlinks=False)
         except OSError:
@@ -53,18 +93,30 @@ def scan_library(
         except (OSError, ValueError):
             continue
         changed.add(relative)
+    return seen, upserts, changed, indexed
+
+
+def _commit_records(
+    store: CatalogStore,
+    existing: dict[str, tuple[int, int]],
+    seen: set[str],
+    upserts: list[FileRecord],
+) -> int:
     delete_paths = [path for path in existing if path not in seen]
     if upserts or delete_paths:
-        file_count = store.apply_scan(upserts, delete_paths)
-    else:
-        file_count = len(existing)
-    removed = set(delete_paths)
-    alive = {path for path in existing if path not in removed}
-    alive.update(record.relative_path for record in upserts)
-    store.apply_inferences(
-        _inferences_for(library_root, store, alive, changed, form_estimator)
-    )
-    return file_count
+        return store.apply_scan(upserts, delete_paths)
+    return len(existing)
+
+
+def _reporting(
+    items: Iterable[Inference],
+    start: int,
+    total: int,
+    report: Callable[[int, int], None],
+) -> Iterator[Inference]:
+    for offset, item in enumerate(items, start=1):
+        yield item
+        report(start + offset, total)
 
 
 def _record_for(path: Path, relative: str, stats: os.stat_result) -> FileRecord:

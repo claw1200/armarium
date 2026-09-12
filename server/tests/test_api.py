@@ -1,9 +1,12 @@
 from pathlib import Path
+from threading import Event
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.conftest import wait_until_idle
 from tests.wav_files import LIBRARY_DIR, write_sine_wav
 
 
@@ -39,7 +42,8 @@ def test_rescan_endpoint_indexes_a_new_file(client: TestClient, tmp_path: Path) 
     write_sine_wav(tmp_path / LIBRARY_DIR / "Drums" / "Hats" / "hat.wav")
     response = client.post("/catalog/scan")
     assert response.status_code == 200
-    assert response.json()["file_count"] == 4
+    assert response.json()["status"] == "started"
+    wait_until_idle(client)
 
     drums = client.get("/catalog/entries", params={"path": "Drums"}).json()
     assert [folder["name"] for folder in drums["folders"]] == ["Hats", "Kicks", "Snares"]
@@ -69,6 +73,7 @@ def test_files_return_inferred_bpm_and_key_and_prefer_user_values(
 ) -> None:
     write_sine_wav(tmp_path / LIBRARY_DIR / "Loop_128bpm_Cmin.wav")
     assert client.post("/catalog/scan").status_code == 200
+    wait_until_idle(client)
     inferred = client.get("/catalog/files", params={"q": "Loop_128"}).json()["items"][0]
     assert inferred["bpm"] == 128
     assert inferred["key"] == "Cm"
@@ -142,6 +147,7 @@ def test_files_empty_library(tmp_path: Path) -> None:
         database_path=tmp_path / "catalog.sqlite",
     )
     with TestClient(create_app(settings)) as empty_client:
+        wait_until_idle(empty_client)
         body = empty_client.get("/catalog/files").json()
     assert body == {"items": [], "total": 0, "limit": 50, "offset": 0}
 
@@ -213,6 +219,7 @@ def test_audio_streams_a_spaced_filename(client: TestClient, tmp_path: Path) -> 
     path = _library_file(tmp_path, "Pack/kick 01.wav")
     write_sine_wav(path)
     assert client.post("/catalog/scan").status_code == 200
+    wait_until_idle(client)
     response = client.get("/audio/Pack/kick 01.wav")
     assert response.status_code == 200
     assert response.content == path.read_bytes()
@@ -231,3 +238,69 @@ def test_audio_rejects_unknown_or_missing_files(client: TestClient, tmp_path: Pa
 def test_audio_rejects_path_escape(client: TestClient) -> None:
     response = client.get("/audio/Drums/%2e%2e/secret.wav")
     assert response.status_code == 400
+
+
+def test_startup_serves_while_a_scan_is_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started = Event()
+    release = Event()
+
+    def blocked_scan(*_args, **_kwargs) -> int:
+        started.set()
+        assert release.wait(timeout=5)
+        return 0
+
+    monkeypatch.setattr("app.indexer.runner.scan_library", blocked_scan)
+    settings = Settings(
+        library_root=tmp_path / LIBRARY_DIR,
+        database_path=tmp_path / "catalog.sqlite",
+    )
+    (tmp_path / LIBRARY_DIR).mkdir()
+    with TestClient(create_app(settings)) as client:
+        assert started.wait(timeout=5)
+        response = client.get("/catalog/files")
+        assert response.status_code == 200
+        assert response.json()["total"] == 0
+        with client.websocket_connect("/catalog/scan") as socket:
+            assert socket.receive_json()["status"] == "running"
+            second = client.post("/catalog/scan")
+            assert second.status_code == 200
+            assert second.json()["status"] == "running"
+            release.set()
+            while socket.receive_json()["status"] != "idle":
+                pass
+
+
+def test_scan_socket_reports_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    started = Event()
+    release = Event()
+
+    def stepped_scan(*_args, **kwargs) -> int:
+        on_progress = kwargs["on_progress"]
+        on_progress(1, 4)
+        started.set()
+        assert release.wait(timeout=5)
+        on_progress(4, 4)
+        return 4
+
+    monkeypatch.setattr("app.indexer.runner.scan_library", stepped_scan)
+    settings = Settings(
+        library_root=tmp_path / LIBRARY_DIR,
+        database_path=tmp_path / "catalog.sqlite",
+    )
+    (tmp_path / LIBRARY_DIR).mkdir()
+    with TestClient(create_app(settings)) as client:
+        assert started.wait(timeout=5)
+        with client.websocket_connect("/catalog/scan") as socket:
+            first = socket.receive_json()
+            assert first["status"] == "running"
+            assert first["done"] == 1
+            assert first["total"] == 4
+            release.set()
+            while True:
+                message = socket.receive_json()
+                if message["status"] == "idle":
+                    assert message["done"] == 4
+                    assert message["total"] == 4
+                    break

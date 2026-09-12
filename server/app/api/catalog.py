@@ -1,12 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query, Request
+import asyncio
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 from pydantic import BaseModel
+from starlette.websockets import WebSocketDisconnect
 
 from app.api.context import app_context
 from app.catalog.models import FileMeta, FileRecord, FolderEntry
 from app.catalog.paths import parse_folder_path
 from app.catalog.store import FILE_SORTS, CatalogStore
-from app.indexer.form import estimator_for
-from app.indexer.scan import scan_library
 
 MAX_PAGE_SIZE = 200
 DEFAULT_PAGE_SIZE = 50
@@ -16,7 +18,7 @@ router = APIRouter()
 
 
 class ScanResponse(BaseModel):
-    file_count: int
+    status: Literal["started", "running"]
 
 
 class FolderResponse(BaseModel):
@@ -52,16 +54,45 @@ class FilesResponse(BaseModel):
 
 
 @router.post("/catalog/scan", response_model=ScanResponse)
-def rescan(request: Request) -> ScanResponse:
+async def rescan(request: Request) -> ScanResponse:
     ctx = app_context(request)
     if not ctx.settings.library_root.is_dir():
         raise HTTPException(status_code=400, detail="library root is not a directory")
-    file_count = scan_library(
-        ctx.settings.library_root,
-        ctx.store,
-        form_estimator=estimator_for(ctx.settings.loop_tempo_estimator),
-    )
-    return ScanResponse(file_count=file_count)
+    started = await ctx.scanner.start()
+    return ScanResponse(status="started" if started else "running")
+
+
+@router.websocket("/catalog/scan")
+async def scan_progress(websocket: WebSocket) -> None:
+    await websocket.accept()
+    ctx = app_context(websocket)
+    queue = ctx.scanner.subscribe()
+    try:
+        await websocket.send_json(ctx.scanner.snapshot().as_dict())
+        while True:
+            progress = asyncio.create_task(queue.get())
+            incoming = asyncio.create_task(websocket.receive())
+            done, pending = await asyncio.wait(
+                {progress, incoming}, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+            for task in pending:
+                try:
+                    await task
+                except (asyncio.CancelledError, WebSocketDisconnect):
+                    pass
+            if progress in done:
+                await websocket.send_json(progress.result().as_dict())
+            if incoming in done:
+                error = incoming.exception()
+                if error is not None and not isinstance(error, WebSocketDisconnect):
+                    raise error
+                return
+    except WebSocketDisconnect:
+        return
+    finally:
+        ctx.scanner.unsubscribe(queue)
 
 
 @router.get("/catalog/entries", response_model=ListingResponse)

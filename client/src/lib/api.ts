@@ -94,6 +94,52 @@ export function audioUrl(relativePath: string, base = apiBase()): string {
 	return `${base}/audio/${encoded}`;
 }
 
+export type ScanProgress = {
+	status: 'idle' | 'running';
+	done: number;
+	total: number;
+};
+
+export function catalogScanSocketUrl(base = apiBase()): string {
+	const url = new URL('catalog/scan', `${base.replace(/\/$/, '')}/`);
+	url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+	return url.toString();
+}
+
+export function parseScanProgress(data: string): ScanProgress | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(data);
+	} catch {
+		return null;
+	}
+	if (parsed === null || typeof parsed !== 'object') {
+		return null;
+	}
+	const record = parsed as Record<string, unknown>;
+	if (record.status !== 'idle' && record.status !== 'running') {
+		return null;
+	}
+	if (typeof record.done !== 'number' || typeof record.total !== 'number') {
+		return null;
+	}
+	if (!Number.isFinite(record.done) || !Number.isFinite(record.total)) {
+		return null;
+	}
+	return {
+		status: record.status,
+		done: record.done,
+		total: record.total
+	};
+}
+
+export function scanPercent(progress: ScanProgress): number {
+	if (progress.total <= 0) {
+		return 0;
+	}
+	return Math.min(100, Math.round((progress.done / progress.total) * 100));
+}
+
 export async function fetchListing(
 	folderPath: string,
 	fetchImpl: typeof fetch = fetch,

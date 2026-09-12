@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { afterNavigate, goto } from '$app/navigation';
+	import { afterNavigate, goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { navigating } from '$app/state';
 	import { audioUrl, fetchFiles, type CatalogFile, type CatalogPage } from '$lib/api';
@@ -11,6 +11,7 @@
 	import SampleList from '$lib/components/SampleList.svelte';
 	import SamplePlayer from '$lib/components/SamplePlayer.svelte';
 	import { toErrorMessage } from '$lib/error';
+	import { scanWatch } from '$lib/scan';
 	import type { Attachment } from 'svelte/attachments';
 	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 
@@ -63,6 +64,16 @@
 			true
 		);
 	});
+
+	$effect(() => {
+		return scanWatch.onComplete(refreshAfterScan);
+	});
+
+	function refreshAfterScan(): void {
+		moreGen += 1;
+		extraItems = [];
+		void invalidateAll();
+	}
 
 	function filesHref(query = data.q): '/' | `/?${string}` {
 		const trimmed = query.trim();

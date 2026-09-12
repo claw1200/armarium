@@ -53,6 +53,22 @@ def test_unchanged_rescan_does_not_reread_audio(
     store.close()
 
 
+def test_scan_reports_progress_for_each_file(tmp_path: Path) -> None:
+    library = write_drum_library(tmp_path / "library")
+    store = CatalogStore(tmp_path / "catalog.sqlite")
+    store.initialize()
+    updates: list[tuple[int, int]] = []
+
+    def record(done: int, total: int) -> None:
+        updates.append((done, total))
+
+    assert scan_library(library, store, on_progress=record) == 2
+    assert updates[0] == (0, 0)
+    assert (2, 0) in updates
+    assert updates[-1] == (4, 4)
+    store.close()
+
+
 def test_rescan_updates_a_changed_file(tmp_path: Path) -> None:
     library = tmp_path / "library"
     path = library / "kick.wav"

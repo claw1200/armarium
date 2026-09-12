@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { scanWatch } from '$lib/scan';
 	import LibrarySidebar from './LibrarySidebar.svelte';
 	import SearchBar from './SearchBar.svelte';
 
@@ -27,7 +28,7 @@
 <div class="drawer sm:drawer-open h-dvh">
 	<input id={drawerId} type="checkbox" class="drawer-toggle" bind:checked={drawerOpen} />
 	<div class="drawer-content flex min-h-0 flex-col overflow-hidden bg-base-200">
-		<nav class="navbar min-h-12 shrink-0 gap-2 border-b border-base-300 bg-base-100 px-3">
+		<nav class="navbar relative min-h-12 shrink-0 gap-2 border-b border-base-300 bg-base-100 px-3">
 			<div class="navbar-start w-auto shrink-0">
 				<label for={drawerId} class="btn btn-square btn-ghost" aria-label="Toggle sidebar">
 					<span class="icon-[lucide--panel-left-open] size-5" aria-hidden="true"></span>
@@ -42,6 +43,14 @@
 					<kbd class="kbd kbd-sm">↓</kbd>
 				</span>
 			</div>
+			{#if scanWatch.running}
+				<progress
+					class="progress pointer-events-none absolute inset-x-0 bottom-0 h-0.5 w-full rounded-none"
+					max="100"
+					value={scanWatch.total > 0 ? scanWatch.percent : undefined}
+					aria-label="Library scan"
+				></progress>
+			{/if}
 		</nav>
 		<div class="page-content flex min-h-0 flex-1 flex-col overflow-hidden">
 			{@render children()}
