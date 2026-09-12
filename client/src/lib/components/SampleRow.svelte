@@ -71,18 +71,16 @@
 	onkeydown={onRowKeydown}
 >
 	<td class="w-10">
-		<div class="tooltip" data-tip={playLabel}>
-			<button
-				type="button"
-				class={['btn btn-ghost btn-square btn-xs swap', playing && 'swap-active']}
-				aria-label={playLabel}
-				onpointerdown={onstopGesture}
-				onclick={stopAndToggle}
-			>
-				<span class="icon-[lucide--pause] swap-on size-4" aria-hidden="true"></span>
-				<span class="icon-[lucide--play] swap-off size-4" aria-hidden="true"></span>
-			</button>
-		</div>
+		<button
+			type="button"
+			class={['btn btn-ghost btn-square btn-xs swap', playing && 'swap-active']}
+			aria-label={playLabel}
+			onpointerdown={onstopGesture}
+			onclick={stopAndToggle}
+		>
+			<span class="icon-[lucide--pause] swap-on size-4" aria-hidden="true"></span>
+			<span class="icon-[lucide--play] swap-off size-4" aria-hidden="true"></span>
+		</button>
 	</td>
 	<td class="min-w-0">
 		<div class="flex min-w-0 flex-col gap-1">
@@ -111,14 +109,12 @@
 				></span>
 			</IconButton>
 			{#if cached}
-				<div class="tooltip" data-tip="Downloaded">
-					<span
-						class="inline-flex size-6 items-center justify-center"
-						aria-label="Downloaded"
-					>
-						<span class="icon-[lucide--file-check] size-4 text-success" aria-hidden="true"></span>
-					</span>
-				</div>
+				<span
+					class="inline-flex size-6 items-center justify-center"
+					aria-label="Downloaded"
+				>
+					<span class="icon-[lucide--file-check] size-4 text-success" aria-hidden="true"></span>
+				</span>
 			{:else}
 				<IconButton
 					label={downloadLabel}

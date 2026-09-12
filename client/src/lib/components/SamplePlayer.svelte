@@ -58,28 +58,21 @@
 			<IconButton label="Previous" onclick={onprev}>
 				<span class="icon-[lucide--skip-back] size-4" aria-hidden="true"></span>
 			</IconButton>
-			<div class="tooltip" data-tip={playLabel}>
-				<button
-					type="button"
-					class={['btn btn-ghost btn-square btn-sm swap', playing && 'swap-active']}
-					aria-label={playLabel}
-					onclick={onplaypause}
-				>
-					<span class="icon-[lucide--pause] swap-on size-5" aria-hidden="true"></span>
-					<span class="icon-[lucide--play] swap-off size-5" aria-hidden="true"></span>
-				</button>
-			</div>
+			<button
+				type="button"
+				class={['btn btn-ghost btn-square btn-sm swap', playing && 'swap-active']}
+				aria-label={playLabel}
+				onclick={onplaypause}
+			>
+				<span class="icon-[lucide--pause] swap-on size-5" aria-hidden="true"></span>
+				<span class="icon-[lucide--play] swap-off size-5" aria-hidden="true"></span>
+			</button>
 			<IconButton label="Next" onclick={onnext}>
 				<span class="icon-[lucide--skip-forward] size-4" aria-hidden="true"></span>
 			</IconButton>
 		</div>
 
-		<IconButton
-			label="Loop"
-			tip={looped ? 'Loop on' : 'Loop off'}
-			active={looped}
-			onclick={() => (looped = !looped)}
-		>
+		<IconButton label="Loop" active={looped} onclick={() => (looped = !looped)}>
 			<span class="icon-[lucide--repeat] size-4" aria-hidden="true"></span>
 		</IconButton>
 
